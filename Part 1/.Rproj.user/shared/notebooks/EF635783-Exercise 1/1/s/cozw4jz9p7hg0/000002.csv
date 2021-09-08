@@ -1,0 +1,79 @@
+"0","scatterplot(mpg~hp"
+"0","            , reg.line=lm"
+"0","            # , smooth=FALSE"
+"0","            , spread=FALSE"
+"0","            , boxplots=FALSE"
+"0","            , span=0.5"
+"0","            , ellipse=FALSE"
+"0","            , data=mtcars"
+"0","            )"
+"2","Warning in plot.window(...) :"
+"2"," ""reg.line"" is not a graphical parameter
+"
+"2","Warning in plot.window(...) :"
+"2"," ""spread"" is not a graphical parameter
+"
+"2","Warning in plot.window(...) :"
+"2"," ""span"" is not a graphical parameter
+"
+"2","Warning in plot.xy(xy, type, ...) :"
+"2","
+ "
+"2"," ""reg.line"" is not a graphical parameter
+"
+"2","Warning in plot.xy(xy, type, ...) :"
+"2","
+ "
+"2"," ""spread"" is not a graphical parameter
+"
+"2","Warning in plot.xy(xy, type, ...) :"
+"2"," ""span"" is not a graphical parameter
+"
+"2","Warning in axis(side = side, at = at, labels = labels, ...) :"
+"2","
+ "
+"2"," ""reg.line"" is not a graphical parameter
+"
+"2","Warning in axis(side = side, at = at, labels = labels, ...) :"
+"2","
+ "
+"2"," ""spread"" is not a graphical parameter
+"
+"2","Warning in axis(side = side, at = at, labels = labels, ...) :"
+"2","
+ "
+"2"," ""span"" is not a graphical parameter
+"
+"2","Warning in axis(side = side, at = at, labels = labels, ...) :"
+"2","
+ "
+"2"," ""reg.line"" is not a graphical parameter
+"
+"2","Warning in axis(side = side, at = at, labels = labels, ...) :"
+"2","
+ "
+"2"," ""spread"" is not a graphical parameter
+"
+"2","Warning in axis(side = side, at = at, labels = labels, ...) :"
+"2","
+ "
+"2"," ""span"" is not a graphical parameter
+"
+"2","Warning in box(...) :"
+"2"," ""reg.line"" is not a graphical parameter
+"
+"2","Warning in box(...) :"
+"2"," ""spread"" is not a graphical parameter
+"
+"2","Warning in box(...) :"
+"2"," ""span"" is not a graphical parameter
+"
+"2","Warning in title(...) :"
+"2"," ""reg.line"" is not a graphical parameter
+"
+"2","Warning in title(...) :"
+"2"," ""spread"" is not a graphical parameter
+"
+"2","Warning in title(...) :"
+"2"," ""span"" is not a graphical parameter
+"

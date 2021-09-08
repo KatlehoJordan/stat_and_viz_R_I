@@ -1,0 +1,254 @@
+---
+title: "Exercise 1"
+output: html_document
+knit: (function(inputFile, encoding) {
+    rmarkdown::render(inputFile, encoding = encoding, output_dir = "p03_outputs")
+  })
+---
+
+# Exercise introduction
+
+This is Exercise 1 in Part 1 of the course.
+
+The purpose of the exercise is to introduce `R`, RStudio, and R Markdown to students.
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Basic arithmetic operations
+
+`R` can handle arithmetic.
+
+```{r basicOperations}
+15+25
+4^4
+```
+
+## Observing datasets available for loading
+
+`R` comes with many datasets that can be loaded.
+
+```{r datasets}
+data()
+```
+
+## Examining the `mtcars` dataset
+
+This block loads the `mtcars` dataset, uses the `?` operator to access help files for the dataset as well as the `names` function, and then provides a summarizes the dataset using the `summary` function.
+
+```{r mtcars}
+data(mtcars)
+mtcars
+?mtcars
+?names
+names(mtcars)
+summary(mtcars)
+```
+
+## Plotting from `mtcars`
+
+The default behavior of the `plot` function for two continuous variables is a scatter plot. Note the use of the `~` operator to indicate an implied dependent relationship; in this example, the implication is that miles per gallon (`mpg`) are dependent upon horsepower (`hp`), and thus we plot `hp` on the x-axis and `mpg` on the y-axis since this is typically how we visualize implied dependent relationships.
+
+```{r plotMtcars}
+plot(mpg ~ hp, mtcars)
+```
+
+## Installing and loading packages
+
+The typical workflow when accessing a new package is to first use `install.packages` and then `library`. However, I find this a bit verbose and created a function `activatePkgs` to automate the workflow; if the package is not already installed, the function first installs the package before loading it.
+
+The rest of this code block creates a more-customized scatter plot with a simple linear-regression line. The chunk parameter `warning` is set to `FALSE` so as to silence warning messages from appearing in the final 'knit' document.
+
+```{r carScatterplot, warning=FALSE}
+activatePkgs('car')
+scatterplot(mpg~hp, reg.line=lm, smooth=FALSE, spread=FALSE, boxplots=FALSE, span=0.5, ellipse=FALSE, data=mtcars)
+```
+
+## Modifying the scatter plot parameters
+
+When I am exposed to a new function with parameters whose purpose is not immediately clear to me, I tend to reformat my code so that it is 'vertical' with 'leading commas' separating parameters. This makes it easy to quickly comment out individual lines with keyboard shortcuts (`ctrl` + `shift` + `c` in RStudio for Windows, `ctrl` + `/` in my VS Studio Code Insiders environment). After commenting out a line, I can re-run the code to see the effects of that parameter.
+
+I added titles to each of the plots using the `main` parameter.
+
+```{r scatterplotParamExploration, warning=FALSE}
+scatterplot(mpg~hp
+            , reg.line=lm
+            , smooth=FALSE
+            , spread=FALSE
+            , boxplots=FALSE
+            , span=0.5
+            , ellipse=FALSE
+            , data=mtcars
+            , main = 'From course reading material'
+            )
+
+scatterplot(mpg~hp
+            , reg.line=lm
+            # , smooth=FALSE
+            , spread=FALSE
+            , boxplots=FALSE
+            , span=0.5
+            , ellipse=FALSE
+            , data=mtcars
+            , main = 'Silenced `smooth = FALSE`'
+            )
+
+scatterplot(mpg~hp
+            , reg.line=lm
+            # , smooth=FALSE
+            # , spread=FALSE
+            , boxplots=FALSE
+            , span=0.5
+            , ellipse=FALSE
+            , data=mtcars
+            , main = 'Silenced `spread = FALSE`'
+            )
+
+scatterplot(mpg~hp
+            , reg.line=lm
+            # , smooth=FALSE
+            # , spread=FALSE
+            # , boxplots=FALSE
+            , span=0.5
+            , ellipse=FALSE
+            , data=mtcars
+            , main = 'Silenced `boxplots = FALSE`'
+            )
+
+scatterplot(mpg~hp
+            , reg.line=lm
+            # , smooth=FALSE
+            # , spread=FALSE
+            # , boxplots=FALSE
+            # , span=0.5
+            , ellipse=FALSE
+            , data=mtcars
+            , main = 'Silenced `span = 0.5`'
+            )
+
+scatterplot(mpg~hp
+            , reg.line=lm
+            # , smooth=FALSE
+            # , spread=FALSE
+            # , boxplots=FALSE
+            # , span=0.5
+            # , ellipse=FALSE
+            , data=mtcars
+            , main = 'Silenced `ellipse = FALSE`'
+            )
+```
+
+### Further exploration of `spread`, `span`, and `ellipse`
+
+The parameters `spread`, `span`, and `ellipse` did not seem to affect the plot output in this context. Perhaps the values provided for these parameters in the course's reading material are their default values, and thus commenting them out did not make a difference. Here, I will try to alter their values from those provided in the reading material to try to discover how they work.
+
+```{r spreadSpanEllipse, warning = FALSE}
+scatterplot(mpg~hp
+            , reg.line=lm
+            , smooth=FALSE
+            , spread=FALSE
+            , boxplots=FALSE
+            , span=0.5
+            , ellipse=FALSE
+            , data=mtcars
+            , main = 'From course reading material'
+            )
+
+scatterplot(mpg~hp
+            , reg.line=lm
+            , smooth=FALSE
+            , spread=TRUE
+            , boxplots=FALSE
+            , span=0.5
+            , ellipse=FALSE
+            , data=mtcars
+            , main = 'Set `spread = TRUE`'
+            )
+
+scatterplot(mpg~hp
+            , reg.line=lm
+            , smooth=FALSE
+            , spread=TRUE
+            , boxplots=FALSE
+            , span=5
+            , ellipse=FALSE
+            , data=mtcars
+            , main = 'Set `span = 5`'
+            )
+
+scatterplot(mpg~hp
+            , reg.line=lm
+            , smooth=FALSE
+            , spread=TRUE
+            , boxplots=FALSE
+            , span=5
+            , ellipse=TRUE
+            , data=mtcars
+            , main = 'Set `ellipse = TRUE`'
+            )
+```
+
+### Discovering purpose of the parameters `spread` and `span` is elusive!
+
+The help page called forth by `?scatterplot` indicates that `spread` is a sub-argument of the `smooth` argument. Perhaps it's behavior is only observable when `spread = TRUE`.
+
+```{r spreadSpan, warning=FALSE}
+?scatterplot
+scatterplot(mpg~hp
+            , reg.line=lm
+            , smooth=FALSE
+            , spread=FALSE
+            , boxplots=FALSE
+            , span=0.5
+            , ellipse=FALSE
+            , data=mtcars
+            , main = 'From course reading material'
+            )
+
+scatterplot(mpg~hp
+            , reg.line=lm
+            # , smooth=FALSE
+            , spread=FALSE
+            , boxplots=FALSE
+            , span=0.5
+            , ellipse=FALSE
+            , data=mtcars
+            , main = 'Silenced `smooth = FALSE`'
+            )
+
+scatterplot(mpg~hp
+            , reg.line=lm
+            # , smooth=FALSE
+            , spread=TRUE
+            , boxplots=FALSE
+            , span=0.5
+            , ellipse=FALSE
+            , data=mtcars
+            , main = 'Set `spread = TRUE`'
+            )
+```
+
+### Quit while you're ahead
+
+Even the help documentation for `scatterplot` did not help me discover the effect of the `spread` or `span` parameters, unfortunately.
+
+# Key learnings
+
+-   There are many datasets in `R` that can be used for experimenting with code. Use `data()` to see an overview and `data(<dataset>)` to load a dataset of interest.
+
+-   From the reading material for this lesson I learned that one can use the cogwheel in code chunks to modify chunk-specific options such as `include` and `echo`.
+
+-   From some explorations on the internet, I figured out how to direct 'knit' R Markdown files to my desired output folder `p03_outputs` by modifing the `YAML` header as such:
+
+    `knit: (function(inputFile, encoding) { rmarkdown::render(inputFile, encoding = encoding, output_dir = paste0(getwd(), "p03_outputs")) })`
+
+-   The `car::scatterplot` function can plot linear models, smoothed regions of confidence, accompanying boxplots, and even an ellipse over the data points.
+
+# Unresolved questions
+
+-   I was unable to find a way to 'knit' the same R Markdown file to multiple outputs simultaneously. Specifically, I would like to generate word, pdf, and html files in a single 'knit' operation, but it seems I have to manually change the `output` parameter in the `YAML` header and then re-'knit' the document to get different outputs.
+
+-   Although I tried I did not figure out how parameters `spread` and `span` in the `car::scatterplot` function modify the function's output. I simply observed that in this specific use case, including them or commenting them out made no difference.
+
+-   I did not figure out how to send the results of `?<R object>` to the output of a code chunk so that these results are also included in the final 'knit' document.

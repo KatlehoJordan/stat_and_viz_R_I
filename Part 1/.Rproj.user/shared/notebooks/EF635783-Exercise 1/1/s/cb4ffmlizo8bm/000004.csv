@@ -1,0 +1,2 @@
+"0","activatePkgs('car')"
+"0","scatterplot(mpg~hp, reg.line=lm, smooth=FALSE, spread=FALSE, boxplots=FALSE, span=0.5, ellipse=FALSE, data=mtcars)"

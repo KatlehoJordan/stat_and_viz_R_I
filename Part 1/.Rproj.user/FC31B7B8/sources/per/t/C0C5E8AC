@@ -1,0 +1,32 @@
+{
+    "id": "C0C5E8AC",
+    "path": "D:/Coding/Projects/sh stat and viz R I/Part 1/p06_myRmds/Exercise 1.Rmd",
+    "project_path": "p06_myRmds/Exercise 1.Rmd",
+    "type": "r_markdown",
+    "hash": "2140041101",
+    "contents": "",
+    "dirty": false,
+    "created": 1630511217827.0,
+    "source_on_save": false,
+    "relative_order": 1,
+    "properties": {
+        "tempName": "Untitled1",
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "247,0",
+        "scrollLine": "0",
+        "last_setup_crc32": "",
+        "rmdVisualMode": "true",
+        "rmdVisualModeLocation": "200:0",
+        "rmdVisualWrapConfigured": "true",
+        "docOutlineVisible": "0"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1631126051,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1631126051142,
+    "read_only": false,
+    "read_only_alternatives": []
+}
