@@ -1,4 +1,0 @@
-"0","activatePkgs('gplots')"
-"0","plotmeans(y ~ w, data = df, las = 1, ylim = c(2, 9)"
-"0","          , connect = F"
-"0","          , barcol = 'black', cex = 2, pch = 16)"
