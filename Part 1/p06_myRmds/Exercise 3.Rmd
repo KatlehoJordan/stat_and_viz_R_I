@@ -1,0 +1,86 @@
+---
+title: "Exercise 3"
+output: html_document
+knit: (function(inputFile, encoding) {
+    rmarkdown::render(inputFile, encoding = encoding, output_dir = "p03_outputs")
+  })
+---
+
+# Exercise introduction
+
+This is Exercise 3 in Part 1 of the course.
+
+The purpose of the exercise is to give students more familiarity with `R`.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Importing data
+
+Use `read.delim` to import your data
+
+```{r importFromTxt}
+exercise3 <- read.delim('../p02_inputs/ex3.txt')
+```
+
+## Using `RCommander` functions in RStudio
+
+Loading `Rcmdr` will open its UI. However, the package `RcmdrMisc` can be used within RStudio.
+
+```{r RcmdrMisc}
+activatePkgs('RcmdrMisc')
+```
+
+## Checking the data
+
+Use `View`, `head`, `tail`
+
+```{r view}
+View(exercise3)
+head(exercise3)
+tail(exercise3)
+head(exercise3, 2)
+```
+
+## Basic data exploration
+
+```{r eda}
+plot(y ~ x, exercise3)
+```
+
+The positive relationship is to be expected since I used Excel's `RANDBETWEEN` function to make y roughly 1/2 the size of x.
+
+## Using `scatterplot` function
+
+Many different functions are available for making plots.
+
+```{r scatterplot}
+scatterplot(y ~ x, data = exercise3, regLine = F, smooth = F)
+```
+
+## Modifying `scatterplot` parameters
+
+```{r scatterplotParams}
+scatterplot(y ~ x, data = exercise3, regLine = T, smooth = F, boxplots = F, xlab = 'X', ylab = 'Y', main = 'Scatterplot function plot')
+```
+
+## Navigating statistics in `RCommander`
+
+```{r rCommander, warning=FALSE, message=FALSE}
+library('Rcmdr')
+```
+
+# Key learnings
+
+-   This warning by RStudio in an R Markdown file probably means that a library you have activated needs to be updated:
+
+    `Error in load(file = path, envir = e) :`
+
+    `unused arguments (file = path, envir = e)`
+
+-   While I dismissed `RCommander` in Exercise 1, the fact that it has an interface for selecting among statistical tests and plotting options may make it worthwhile to explore in the future. My presumption is that this menu will be very limited and not able to access the latest packages that are developed.
+
+# Unresolved questions
+
+-   Is there a way to do text-completion within `RCommander`? This is one of the most powerful aspects of RStudio, but it seems to be missing from RCommander
