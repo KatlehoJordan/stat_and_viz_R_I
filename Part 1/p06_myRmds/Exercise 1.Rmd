@@ -245,6 +245,8 @@ Even the help documentation for `scatterplot` did not help me discover the effec
 
 -   The `car::scatterplot` function can plot linear models, smoothed regions of confidence, accompanying boxplots, and even an ellipse over the data points.
 
+-   There is also the user interface `RCommander`, but it did not seem as useful as RStudio and so I will not be using it.
+
 # Unresolved questions
 
 -   I was unable to find a way to 'knit' the same R Markdown file to multiple outputs simultaneously. Specifically, I would like to generate word, pdf, and html files in a single 'knit' operation, but it seems I have to manually change the `output` parameter in the `YAML` header and then re-'knit' the document to get different outputs.
