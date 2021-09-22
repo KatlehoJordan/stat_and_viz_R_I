@@ -1,0 +1,57 @@
+---
+title: "Replace with title"
+author: "Replace with name"
+date: "Replace with date"
+output: 
+  word_document: 
+    fig_height: 7
+    fig_width: 7
+---
+
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+library(Rcmdr) #this chunk start RCommander 
+library(ggplot2) #this cunks starts ggplot2
+#if you have used other packeges you may need to include them here
+```
+
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+#include a chunk that opens your indata
+```
+
+
+## Introduction
+
+This is where you write the background and the aim with the assigment.
+
+
+## Method
+
+Brief explanation of methods, and a description of the work-flow.
+
+## Result
+
+Include the important result from your analyses. Have a short informative running text explaining the results.
+
+Add scripts in R chunks. Additional chunks can be included with the "insert"" button 
+
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+
+
+## Discussion
+
+Discuss your findings and make conclusions. Be sure to answer questions. 
+
+## References
+
+Include references if appropriate
+ex. homepages that you fetch data from, articles from scientific journals, etc. 

@@ -1,0 +1,26 @@
+---
+title: "Exercise 1"
+output: html_document
+knit: (function(inputFile, encoding) {
+    rmarkdown::render(inputFile, encoding = encoding, output_dir = "p03_outputs")
+  })
+---
+
+# Exercise introduction
+
+This is Exercise 1 in Part 3 of the course.
+
+The purpose of the exercise is to cover correlations and regression.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Key learnings
+
+-   ...
+
+# Unresolved questions
+
+-   ...
