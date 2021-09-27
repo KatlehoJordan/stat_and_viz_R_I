@@ -16,11 +16,200 @@ The purpose of the exercise is to cover correlations and regression.
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+## Part 1: Blood pressure and Heart rate
+
+### Import the data using `Rcmdr`
+
+```{r dataImport}
+library(Rcmdr)
+library(car)
+library(RcmdrMisc)
+# include this code chunk as-is to enable 3D graphs
+library(rgl)
+knitr::knit_hooks$set(webgl = hook_webgl)
+bp <- 
+  read.table("../p02_inputs/bp.txt",
+   header=TRUE, stringsAsFactors=TRUE, sep="\t", na.strings="NA", dec=".", 
+  strip.white=TRUE)
+```
+
+### Summarizing the data
+
+First using `Rcmdr` Statistics -\> Summaries -\> Active data set
+
+```{r summaries}
+summary(bp)
+```
+
+Then using `Rcmdr` Statistics -\> Summaries -\> Numerical summaries
+
+```{r numSummary}
+library(abind, pos = 65)
+library(e1071, pos = 66)
+
+numSummary(bp[,c("Blood.pressure", "Heart.rate"), drop=FALSE], 
+  statistics=c("mean", "sd", "IQR", "quantiles"), quantiles=c(0,.25,.5,.75,1))
+```
+
+### Box plots of the variables
+
+```{r boxplots}
+Boxplot( ~ Blood.pressure, data=bp, id=list(method="y"))
+Boxplot( ~ Heart.rate, data=bp, id=list(method="y"))
+```
+
+### Histograms of variables
+
+```{r histos}
+with(bp, Hist(Blood.pressure, scale="frequency", breaks="Sturges", 
+  col="darkgray"))
+
+with(bp, Hist(Heart.rate, scale="frequency", breaks="Sturges", 
+  col="darkgray"))
+```
+
+Both have a slight right-skew.
+
+### Correlation test
+
+```{r corrTest}
+with(bp, cor.test(Blood.pressure, Heart.rate, alternative="two.sided", 
+  method="pearson"))
+```
+
+### Scatter plot to support correlation analysis
+
+```{r scatterPlot}
+scatterplot(Heart.rate~Blood.pressure, regLine=TRUE, smooth=list(span=0.5, 
+  spread=TRUE), id=list(method='identify'), boxplots='xy', 
+  ellipse=list(levels=c(.5, .9)), data=bp)
+```
+
+## Part 2: CO~2~ emissions, temperature and year
+
+### Data retrieval
+
+Download the [temperature data](https://cdiac.ess-dive.lbl.gov/ftp/trends/temp/jonescru/global.txt) and [CO~2~ data](https://cdiac.ess-dive.lbl.gov/trends/emis/tre_glob.html)
+
+Then pre-process it in Excel and save as tab-delimited text files.
+
+```{r importTempByCo2}
+tempByCo2 <- 
+  read.table("D:/Coding/Projects/sh stat and viz R I/Part 3/p02_inputs/tempbyco2.txt",
+   header=TRUE, stringsAsFactors=TRUE, sep="\t", na.strings="NA", dec=".", 
+  strip.white=TRUE)
+```
+
+### Pearson's product-moment and Spearman's rank
+
+Pearson's product-moment is for normally-distributed data with evenly distributed residuals (homoscedasticity). If either pre-requisite is violated, Spearman's rank correlation is an alternative.
+
+Make a scatter plot first.
+
+```{r tempByCo2Scatterplot}
+scatterplot(Annual.Temperature.Relative.to.the.1961.1990.Mean..degrees.C.~Annual.CO2.emissions..metric.tons.,
+   regLine=TRUE, smooth=list(span=0.5, spread=TRUE), boxplots='xy', 
+  ellipse=list(levels=c(.5, .9)), data=tempByCo2)
+```
+
+There appears to be a positive relationship between CO~2~ emissions and temperature. The box plot indicates that the CO~2~ emissions are not normally distributed (right-skew). Furthermore, the scatterplot with a simple line of best fit indicates that the data are heteroscedastic, with residuals tending to be negative when CO~2~ emissions are under 1000, positive for emissions between 1000 and 2000, and perhaps homoscedastic otherwise. My intuition then is to use Spearman's rank correlation to determine of the positive relationship is statistically significant.
+
+```{r spearmansRankCorr}
+with(tempByCo2, cor.test(Annual.CO2.emissions..metric.tons., 
+  Annual.Temperature.Relative.to.the.1961.1990.Mean..degrees.C., 
+  alternative="two.sided", method="spearman"))
+```
+
+The p-value is nearly 0, and thus the relationship is statistically significant.
+
+### Regression
+
+Building a model where CO~2~ emissions are dependent on year.
+
+```{r linReg}
+RegModel.1 <- lm(Annual.CO2.emissions..metric.tons.~Year, data=tempByCo2)
+summary(RegModel.1)
+```
+
+Using diagnostic plots to determine if a model is appropriate. Some resources regarding diagnostic plots: [here](https://data.library.virginia.edu/diagnostic-plots/) [here](https://data.library.virginia.edu/diagnostic-plots/) [here](https://analyticspro.org/2016/03/07/r-tutorial-how-to-use-diagnostic-plots-for-regression-models/)
+
+```{r diagnosticPlots}
+# Commenting out changes to par since want to save the graphs in full-size in the knitted document. When using `Rcmdr` interactively, the par code submission enables 'clicking-through' the figures one-by-one.
+# oldpar <- par(oma=c(0,0,3,0), mfrow=c(2,2))
+plot(RegModel.1)
+# par(oldpar)
+```
+
+The Residuals vs Fitted plot should not have a distinctive pattern; this plot does have a v-shaped pattern, indicating that perhaps the model is not appropriate.
+
+The Normal Q-Q plot should have the points falling close to the upward sloping line without a clear patterned deviation; this plot has many values in the lower-left quadrant that have residuals much lower than the theoretical residuals, indicating that perhaps the model is not appropriate.
+
+The Scale-Location / Spread-Location figure is related to the Residuals vs Fitted plot, although the y-axis is the square root of the standardized residuals. When a model is a good fit then you should observe a horizontal line and no clear pattern to how the points are distributed around the line; in this case, there is a distinctive 'W' shape to the points, indicating the model is not a good fit.
+
+The final diagnostic plot is the Residuals vs Leverage plot. This plot shows how the individual data points influence the overall regression model. Points that have a high Cook's distance score inordinately influence the model and might therefore be considered outliers. Every model will have Cook's distance plotted differently and the shape/pattern of the points in this figure are not specifically useful for interpretation, but rather if any points have high Cook's distance; in this case, no points have a high Cook's distance.
+
+A scatterplot can also be useful for determining the appropriateness of a linear model.
+
+```{r scatterPlotOfModel}
+scatterplot(Annual.CO2.emissions..metric.tons.~Year, regLine=TRUE, 
+  smooth=list(span=0.5, spread=TRUE), boxplots='xy', ellipse=list(levels=c(.5,
+   .9)), data=tempByCo2)
+```
+
+This relationship is not well-characterized by a simple straight line. This, plus the interpretations from the diagnostic plots means that the a different model needs to be developed.
+
+### Alternative regression models
+
+First will try log10 transformation of CO~2~.
+
+```{r log10Transformed}
+RegModel.2 <- lm(log10(Annual.CO2.emissions..metric.tons.)~Year, data=tempByCo2)
+summary(RegModel.2)
+```
+
+```{r log10TransformedPlots}
+plot(RegModel.2)
+scatterplot(log10(Annual.CO2.emissions..metric.tons.)~Year, regLine=TRUE, 
+  smooth=list(span=0.5, spread=TRUE), boxplots='xy', ellipse=list(levels=c(.5,
+   .9)), data=tempByCo2)
+```
+
+The log10-transformed model still has distinctive patterns in the Residual vs. Fitted and Scale-Location/Spread-Location plots. The Q-Q plot also clearly has points at the extremes that do not fall on the line of identity. However, the scatter plot looks much better, with the data aligning much better to a linear pattern.
+
+Furthermore, the R^2^ value for the log10-transformed model is much better than the untransformed model (0.9882 vs 0.6231).
+
+### Square-root transformation
+
+Exploring how another transformation method may affect model performance.  
+
+```{r sqrtTransformed}
+RegModel.3 <- lm(sqrt(Annual.CO2.emissions..metric.tons.)~Year, data=tempByCo2)
+summary(RegModel.3)
+```
+The R^2^ is greater than the untransformed model, but not as good as the log10-transformed model. On to the diagnostic plots.  
+
+```{r sqrtDiagnosticPlots}
+plot(RegModel.3)
+scatterplot(sqrt(Annual.CO2.emissions..metric.tons.)~Year, regLine=TRUE, 
+  smooth=list(span=0.5, spread=TRUE), boxplots='xy', ellipse=list(levels=c(.5,
+   .9)), data=tempByCo2)
+```
+
+The scatter plot for the sqrt-transformed data looks better than the untransformed, but not as linear as the log10-transformed data. The other diagnostic plots appear similar; they do not provide much support for using this model.  
 
 # Key learnings
 
--   ...
+-   In `Rcmdr`, one must 'import' data for it to become part of the active datasets list; 'loading' the data is not sufficient since it is not saved as an object that can be re-accessed.\
+-   Library `abind` is meant for helping combine multidimensional arrays\
+-   Library `e1071` is a library with misc functions of the Department of Statistics, Probability Theory Group (Formerly: E1071), TU Wien\
+-   The `pos` argument in the `library` function specifies the position on the search list at which to attach the loaded namespace.
+-   When you build a graph in `Rcmdr`, depending on the graph type and options, you may be able to use the mouse to click on individual points to add ID labels to them.
+-   The diagnostic plots for assessing the appropriateness of a linear model include: Residual vs Fitted, Q-Q, Scale-Location/Spread-Location, and Residuals vs. Leverage. In Residual vs Fitted and Scale-Location/Spread-Location, seeing no clear patterns in the data is ideal. In the Q-Q plot, seeing that the points align well with the upward-sloping line is ideal. In the Residuals vs. Leverage, having no points with a large Cook's distance is ideal.  
 
 # Unresolved questions
 
--   ...
+-   How does one enable the mouse-click labelling feature of `Rcmdr` figures outside of the context of using `Rcmdr`?\
+-   At some point in my session, the code stopped being transcribed to the `R Markdown` tab in `Rcmdr`, although it was still transcribed to the `R Script` tab. What causes this error and how does one fix it?
+-   When would one favor Kendall's tau over Spearman's rank correlation?
+-   What are the formal methods for testing a dataset's normal distribution and homoscedasticity? Is it not Shapiro-Wilk for normality? What about the Breasch-Pagan test for heteroscedasticity?
+-   Are there *objective* ways to diagnose linear model appropriateness instead of 'eyeballing' graphs and making a judgment call?
