@@ -1,6 +1,6 @@
 ---
 title: "Exercise 3"
-output: html_document
+output: pdf_document
 knit: (function(inputFile, encoding) {
     rmarkdown::render(inputFile, encoding = encoding, output_dir = "p03_outputs")
   })
