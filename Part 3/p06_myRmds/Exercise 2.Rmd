@@ -10,17 +10,356 @@ knit: (function(inputFile, encoding) {
 
 This is Exercise 2 in Part 3 of the course.
 
-The purpose of the exercise is to cover comparing groups.
+The purpose of the exercise is to cover comparing groups. This will be done with t-tests and Wilcoxon Signed-rank test.
+
+T-tests are valid when the assumptions of normal distribution and equal variance are met. If either assumption is violated, then a nonparametric alternative should be used (either Wilcoxon rank sum if unpaired or Wilcoxon signed-rank if paired data.)
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+## Getting the data
+
+Getting length & width data for female and male beetles.
+
+```{r getData}
+(beetles <-
+    data.frame(
+        length = c(23, 24, 14, 15, 16, 12, 13, 9, 10, 14)
+        , width = c(2, 3, 4, 3, 2, 4, 5, 5, 6, 6)
+        , sex = c('Female', 'Female', 'Female', 'Female', 'Female', 'Male', 'Male', 'Male', 'Male', 'Male')
+    ))
+```
+
+## Calculating t-statistic
+
+The t-statistic is just the mean difference divided by the standard error of difference.
+
+```{r tStatManual}
+# (aggBeetles <- beetles %>%
+#     group_by(sex) %>%
+#     summarize(
+#         meanLength = mean(length)
+#         , semLength = sd(length)/(sqrt(n()))
+#         , meanWidth = mean(width)
+#         , semWidth = sd(length)/(sqrt(n()))
+#         )
+# )
+# 
+# (meanDiffLength <-
+#     ((aggBeetles %>%
+#         filter(sex == 'Female') %>%
+#         select(meanLength)) -
+#     (aggBeetles %>%
+#         filter(sex == 'Male') %>%
+#         select(meanLength))) %>%
+#     rename(meanDiffLength = meanLength)
+# )
+#
+# (seOfDiffLength <-
+#     (sqrt(
+#         (
+#             aggBeetles %>%
+#                 filter(sex == 'Female') %>%
+#                 select(semLength)
+#             ) ^ 2 +
+#         (
+#             aggBeetles %>%
+#                 filter(sex == 'Male') %>%
+#                 select(semLength)
+#             ) ^ 2
+#     )) %>% rename(seOfDiffLength = semLength)
+# 
+#     )
+# 
+# (tStatLength <- (meanDiffLength / seOfDiffLength) %>%
+#         rename(tStatLength = meanDiffLength))
+# 
+# (meanDiffWidth <-
+#     ((aggBeetles %>%
+#         filter(sex == 'Female') %>%
+#         select(meanWidth)) -
+#     (aggBeetles %>%
+#         filter(sex == 'Male') %>%
+#         select(meanWidth))) %>%
+#     rename(meanDiffWidth = meanWidth)
+# )
+# 
+# (seOfDiffWidth <-
+#     (sqrt(
+#         (
+#             aggBeetles %>%
+#                 filter(sex == 'Female') %>%
+#                 select(semWidth)
+#             ) ^ 2 +
+#         (
+#             aggBeetles %>%
+#                 filter(sex == 'Male') %>%
+#                 select(semWidth)
+#             ) ^ 2
+#     )) %>% rename(seOfDiffWidth = semWidth)
+# 
+#     )
+# 
+# (tStatWidth <- (meanDiffWidth / seOfDiffWidth) %>%
+#         rename(tStatWidth = meanDiffWidth))
+```
+
+Would then look up critical values for t-test based on the degrees of freedom. A two-sample t-test has degrees of freedom equal to (n~a~ - 1) + (n~b~ - 1). In this case, that is 8. A resource for t-critical values is [here](https://davidmlane.com/hyperstat/t_table.html).
+
+Considering that the second t-statistic I calculated was negative, I presume my calculations were wrong. If they are correct, though, and I presume I should just use the absolute value of the t-statistic, then there is a significant difference in length \~ sex at the 95% confidence level since the T~CV~ i 2.3060 and the t-statistic is 2.9482. However, there is no difference in width, as the t-statistic is 1.0405.  
+
+Also, when trying to knit this document without commenting out the code block above, an error is encountered where the variable `sex` is not found in the working scope. This is despite the code chunk working as desired when developing in RStudio. Thus, scoping is different while knitting. Furthermore, my use of the tidyverse syntax for doing the data manipulations in that code chunk were not very easy to follow, and there is probably a better way to do the intermediary calculations that would also be executable during the knitting process. For now, the code chunk is commented out since the insights from the code were not valuable and knitting the rest of the document is important.   
+
+## Doing the t-tests with `Rcmdr`
+
+```{r tTestsInRcmdr}
+library(Rcmdr)
+library(car)
+library(RcmdrMisc)
+library(rgl)
+knitr::knit_hooks$set(webgl = hook_webgl)
+
+t.test(length~sex, alternative='two.sided', conf.level=.95, var.equal=FALSE,
+   data=beetles)
+
+t.test(width~sex, alternative='two.sided', conf.level=.95, var.equal=FALSE,
+   data=beetles)
+```
+
+When using the `t.test` function, one can specify that one does not presume there to be equal variance. I presume this lowers the t-statistic by some empirically-derived method. The df for the width\~sex model is *lower* than 8, however, which is surprising to me.\
+The conclusions of the analysis, however, are that female beetles are longer and narrower than male beetles.
+
+## Looking at differences between related groups
+
+Will compare CO~2~ emissions in 290 Swedish municipalities in 1990 and 2017.
+
+```{r importCo2Data}
+swedenCO2 <- 
+  read.table("../p02_inputs/CO2_municipalities.txt",
+   header=TRUE, stringsAsFactors=TRUE, sep="\t", na.strings="NA", dec=",", 
+  strip.white=TRUE)
+```
+
+### Do the paired t-test.
+
+```{r pairedTtest}
+with(swedenCO2, (t.test(X1990, X2017, alternative='two.sided', 
+  conf.level=.95, paired=TRUE)))
+```
+
+There is a significant difference, but the output of the `t.test` function doesn't tell which group is larger.
+
+```{r summarySwedenCO2}
+summary(swedenCO2)
+```
+
+The CO~2~ emissions in Sweden has actually *decreased* from 1990 to 2017.
+
+```{r plot}
+swedenCO2 %>% 
+    select(X1990, X2017) %>% 
+    plot()
+
+abline(a = 0, b = 1)
+```
+
+This plot shows the data in the counties in 1990 and 2017 with the 'line-of-identity'. All dots that lay below the line of identity had lower emissions in 2017 than they did in 1990.
+
+### Redoing the test with non-parametric Wilcoxon Signed-Rank
+
+```{r wilcoxonSignedRank}
+with(swedenCO2, median(X1990 - X2017, na.rm=TRUE)) # median difference
+with(swedenCO2, wilcox.test(X1990, X2017, alternative='two.sided', 
+  paired=TRUE))
+```
+
+The nonparametric test also detected the significant difference, and the p-value was 1-2 orders of magnitude smaller. Which test should have been chosen based on 'eyeballing' the histograms of the years?
+
+### Histograms of years
+
+```{r histYears}
+hist(swedenCO2$X1990)
+hist(swedenCO2$X2017)
+
+ggplot(swedenCO2, aes(x = X1990)) +
+    geom_histogram() +
+    ggtitle('Hist with ggplot')
+ggplot(swedenCO2, aes(x = X2017)) +
+    geom_histogram() +
+    ggtitle('Hist with ggplot')
+
+library(ggridges)
+swedenCO2 %>% 
+    select(X1990,X2017) %>% 
+    pivot_longer(cols = c(X1990, X2017), names_to = 'year', values_to = 'CO2') %>% 
+    ggplot(aes(x = CO2, y = year)) +
+    geom_density_ridges()
+```
+
+Neither dataset is anything close to being normally distributed. Either the data need to be transformed or non-parametric alternatives should be used.
+
+```{r histTransformed}
+hist(log10(swedenCO2$X1990))
+hist(log10(swedenCO2$X2017))
+
+ggplot(swedenCO2, aes(x = log10(X1990))) +
+    geom_histogram() +
+    ggtitle('Hist with ggplot')
+ggplot(swedenCO2, aes(x = log10(X2017))) +
+    geom_histogram() +
+    ggtitle('Hist with ggplot')
+
+swedenCO2 %>% 
+    select(X1990, X2017) %>% 
+    pivot_longer(cols = c(X1990, X2017), names_to = 'year', values_to = 'CO2') %>% 
+    ggplot(aes(x = log10(CO2), y = year)) +
+    geom_density_ridges()
+```
+
+The log-transformation did quite well. Let's see how the t-test does on the log-transformed data.
+
+```{r ttestOnLogTransformed}
+with(swedenCO2, (t.test(log10(X1990), log10(X2017), alternative='two.sided', 
+  conf.level=.95, paired=TRUE)))
+```
+
+Now the p-value is as small as it was from the Wilcoxon Signed-rank test (and probably as small as R will return). The log-transformation enabled the use of the parametric test, although one cannot conclude from this example if the parametric test on transformed data is more powerful than non-parametric tests on the non-transformed data.
+
+From previous studies, I've learned that the Wilcoxon Signed-rank tests should only be done on data that are symmetrical, and the raw data were clearly not symmetrical. Let's see if I can do a sign test instead on the raw data.
+
+```{r signTest}
+activatePkgs('rstatix')
+
+swedenCO2 %>% 
+    select(X1990,X2017) %>% 
+    pivot_longer(cols = c(X1990, X2017), names_to = 'year', values_to = 'CO2') %>% 
+    pairwise_sign_test(CO2 ~ year)
+```
+
+I did not find a `base` version of the sign test, but the `rstatix` package provided a version. This version, as best as I could tell, only accepts data in the formula syntax, so the data had to be stacked before it could be piped through the function. However, the results were a p-value that is many orders of magnitude lower than that given by the previous r functions. Either the previous r functions do not provide the same level of assurance, or the sign test is much more powerful given that the data do not satisfy the assumptions for using the Wilcoxon Signed-Rank test. In any case, the sign test did not appear to perform worse.  
+
+Upon reading more on the Wilcoxon Signed-Rank test, the assumption is that the differences between the two groups are symmetrical ([reference here](https://statistics.laerd.com/spss-tutorials/wilcoxon-signed-rank-test-using-spss-statistics.php)). Thus, let me take the differences and try to see if they are approximately symmetrical.  
+
+```{r distribOfDiffs}
+swedWithDiffs <-
+  swedenCO2 %>% 
+  mutate(diffs = na_remove(X1990 - X2017)) %>% 
+  select(diffs) # %>% 
+  # Unable to pipe directly into qqnorm, but have to save the object and call separately
+  # qqnorm(.$diffs)
+
+qqnorm(swedWithDiffs$diffs)
+hist(swedWithDiffs$diffs)
+```
+
+The histogram indicates the data are approximately symmetrical, but certainly not normally distributed (as also indicated by the qqplot).
+
+## Plotting the years side-by-side
+
+```{r boxplotCo219902017}
+attach(swedenCO2)
+
+boxplot(X1990, X2017, names=c("1990", "2017"), outline = TRUE, ylab="CO2 emissions (metric tons)", cex.lab=1.3, main = 'With outliers')
+
+boxplot(X1990, X2017, names=c("1990", "2017"), outline = FALSE, ylab="CO2 emissions (metric tons)", cex.lab=1.3, main = 'Outliers removed')
+
+boxplot(log10(X1990), log10(X2017), names=c("1990", "2017"), outline = TRUE, ylab="CO2 emissions (log10(metric tons))", cex.lab=1.3, main = 'With outliers and logged y-axis')
+
+detach(swedenCO2)
+
+
+swedenCO2 %>% 
+  select(X1990, X2017) %>% 
+  mutate(X1990 = log10(X1990), X2017 = log10(X2017)) %>% 
+  pivot_longer(cols = c(X1990, X2017), names_to = 'Year', values_to = 'CO2 emissions (log10(metric tons))') %>% 
+  ggplot(aes(Year, `CO2 emissions (log10(metric tons))`)) + 
+  geom_boxplot()
+```
+
+
+## Testing for differences in birth weight based on mothers' smoking clasification
+
+I copied the data from the .html exercise file then manipulated in VS Code Insiders, then brought the manipulated data here.  
+
+```{r dataImportSmokers}
+bwBySmoke <- data.frame(
+    `Birth weight` = c(
+        3.18, 2.74, 2.9, 3.27, 3.65, 3.42, 3.23, 2.86, 3.6, 3.65, 3.69, 3.53, 2.38, 2.34, 3.99, 3.89, 3.6, 3.73, 3.31, 3.7, 4.08, 3.61, 3.83, 3.41, 4.13, 3.36, 3.54, 3.51, 2.71
+        )
+    , `Smoking habit` = c(
+        'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers'
+        )
+    )
+```
+
+### Exploratory Data Analysis
+
+```{r edaSmoke}
+bwBySmoke %>% 
+  group_by(Smoking.habit) %>% 
+  summarize(
+    n = n()
+    , min = min(Birth.weight, na.rm = T)
+    , q02 = quantile(Birth.weight, 0.02)
+    , q16 = quantile(Birth.weight, 0.16)
+    , median = median(Birth.weight, na.rm = T)
+    , mean = mean(Birth.weight, na.rm = T)
+    , q84 = quantile(Birth.weight, 0.84)
+    , q98 = quantile(Birth.weight, 0.98)
+    , max = max(Birth.weight, na.rm = T)
+    , iqr = IQR(Birth.weight, na.rm = T)
+    , mad = mad(Birth.weight, na.rm = T)
+    , sd = sd(Birth.weight, na.rm = T)
+    , sem = sd / sqrt(n)
+    )
+
+bwBySmoke %>% 
+  ggplot(aes(x = Smoking.habit, y = Birth.weight)) +
+  geom_boxplot()
+
+bwBySmoke %>% 
+  ggplot(aes(y = Smoking.habit, x = Birth.weight)) +
+  geom_density_ridges()
+
+bwBySmoke %>% 
+  ggplot(aes(y = Smoking.habit, x = Birth.weight)) +
+  geom_density_ridges(stat = 'binline', bins = 20)
+
+```
+
+These data do not appear to be normally distributed and thus I will not use the t-test. Rather I will use a non-parametric alternative. Specifically, I will assess if it is valid to use a  a Wilcoxon Rank-Sum / Mann-Whitney U test.  
+
+According to [this reference regarding the assumptions of a Wilcoxon Rank-Sum / Mann-Whitney U test](https://statistics.laerd.com/spss-tutorials/mann-whitney-u-test-using-spss-statistics.php), one can compare median ranks if the distributions have similar shapes, but only mean ranks otherwise.  
+
+Since I am not certain if the distributions are similar enough to compare median ranks, I will do a Wilcoxon Rank-Sum / Mann-Whitney U test by comparing mean ranks.  
+
+Unfortunately, I did not find a way to compare mean ranks with this test and have [posted to CrossValidated](https://stats.stackexchange.com/questions/546347/how-to-tune-wilcox-test-in-r-to-compare-means-instead-of-medians) to see if someone can help. Instead, I will simply use the default behavior, which I believe compares median ranks.  
+
+```{r rankSum}
+with(bwBySmoke, wilcox.test(Birth.weight~Smoking.habit))
+```
+The test statistic for the Wilcoxon Rank-Sum test, **W is 30.5**. The **p-value is 0.001238**. The **group sizes are 14** for the 'Heavy-smokers' group **and 15** for the 'Non-smokers' group. The **median birth weights are 3.25 and 3.61 kg** for the 'Heavy-smokers' and 'Non-smokers' groups, respectively.  
+
+**The conclusion is that heavy smokers give birth to lower-weight babies.**
+
 
 # Key learnings
 
--   ...
+-   Scoping is different when knitting markdown files vs developing them directly in RStudio
+-   To knit to pdf, one must have some distribution of LaTeX. This may require, for example, installing MiKTex. After installation, one should check for and install all updates.
+-   To silence a warning while knitting to pdf that has to do with how plots are cropped, one may need to install Ghostscript and add its executable file to the Windows PATH variable.
+-   If warnings/errors are still arising after installing MiKTeX and/or Ghostscript, it may be worth re-starting the computer and/or removing those installations, re-installing while all other applications are shut down, and then rebooting the computer.
+-   The `attach` function is probably what is behind the scenes for the pipe function in the tidyverse... It makes a dataset available for reference in subsequent calls without needing to use subsetting operators (`$` and `[]` and `[[]]`). This is probably also what is behind the scenes when activating a dataset in the `Rcmdr` UI. The `detach` function removes it.  
 
 # Unresolved questions
 
--   ...
+-   Isn't an assumption for the Wilcoxon signed-rank test that the distribution of paired differences are symmetrical? If not symmetrical, then one should do a Sign test instead, right?
+-   Is the Wilcoxon rank-sum test the same as the Mann-Whitney U test?
+-   With the Wilcoxon rank-sum test / Mann-Whitney U test, don't you need to examine if the distributions of the compared groups are similar? If they are similar then you can compare medians, but if they are not similar you compare means, right?
+-   Why is the df lower than 8 when doing the t test on width\~sex but 8 (as expected) when doing length\~sex?
+-   If doing a paired t-test but homogeneity of variances cannot be assumed, is the alternative test also a Welch t-test, or is a Welch t-test only for unpaired data that violates the assumption of homogeneity of variances?
+-   When doing a Wilcoxon Signed-Rank test using `Rcmdr`, one has the options to choose the 'default', 'exact', 'normal approximation', or 'normal approximation with continuity correction' test. When would one select the different options?
+-   Why can't I pipe directly into the `qqnorm` function with a selected result column?
+-   How does one formally/objectively assess if the distributions of differences are symmetrical, as is an assumption for the Wilcoxon Signed-Rank test?
+-   How does one formally/objectively assess if the distributions are similarly-shaped, as is an assumption for the Wilcoxon Rank-Sum / Mann-Whitney U test?

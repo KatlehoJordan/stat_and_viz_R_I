@@ -1,0 +1,11 @@
+length	width	sex
+23	2	Female
+24	3	Female
+14	4	Female
+15	3	Female
+16	2	Female
+12	4	Male
+13	5	Male
+9	5	Male
+10	6	Male
+14	6	Male
