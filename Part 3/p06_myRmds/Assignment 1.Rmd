@@ -1,0 +1,858 @@
+---
+title: "Assignment 1"
+knit: (function(inputFile, encoding) {
+    rmarkdown::render(inputFile, encoding = encoding, output_dir = "p03_outputs")
+  })
+output: 
+  html_document: 
+    fig_height: 7
+    fig_width: 7
+---
+
+```{r setup, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+```
+
+<br>
+
+## Introduction
+
+The aim of this assignment was to "analyze relationships between continuous variables using correlation and linear regression, and differences between two samples using t-test or wilcoxon test[sic]."
+
+## Methods
+
+The assignment was divided into 3 parts. Parts 1 and 2 had one question each, whereas Part 3 had two questions.
+
+The general workflow for each question was as follows:
+
+1.  Import data into R.
+
+2.  Restructure the data according to needs for answering the questions. This may have involved, for example:
+
+    -   joining/merging datasets
+    -   dropping empty rows
+    -   renaming variables
+    -   pivoting data from wide to long formats
+
+3.  Evaluate the appropriateness of using parametric statistical techniques. Some assessments included:
+
+    -   Visual exploratory data analysis (EDA)
+    -   Informal normality testing with diagnostic plots
+    -   Formal normality testing with Shapiro-Wilk tests
+
+4.  When data were not immediately suitable for the use of parametric tests, attempts were made to transform the data. After data transformation, the data were re-assessed to determine if the parametric tests could be used. Some data transformation methods used herein include:
+
+    -   log10
+    -   square root
+    -   Box-cox
+
+5.  If data transformations failed to make data appropriate for parametric tests, then a similar iterative process of testing assumptions -\> transforming data -\> re-testing assumptions was used prior to applying non-parametric methods. Examples of assumptions that were evaluated for non-parametric tests include:
+
+    -   Examining if two datasets that are being compared have similar distributions before interpreting the results of a Wilcoxon Rank-Sum / Mann-Whitney U test [reference 1](https://statistics.laerd.com/spss-tutorials/mann-whitney-u-test-using-spss-statistics.php)
+    -   Examining if distribution of differences between two related groups are symmetrical prior to applying the Wilcoxon Signed-Rank test [reference 2](https://statistics.laerd.com/spss-tutorials/wilcoxon-signed-rank-test-using-spss-statistics.php)
+
+6.  Once assumptions were validated (or at least not invalidated) for applying a given parametric or non-parametric test, then the test method was applied to the data in order to answer the specific question from the assignment. Methods applied in this assignment include:
+
+    -   Kendall's $\tau$-b correlation for assessing the strength of relationship between per capita GDP and the number of PCs used per 100 people by country
+    -   Simple Linear Regression on transformed data to assess the relationship of electricity generation per person in China over time
+    -   Unpaired t-test on transformed data to determine if incomes significantly differ between the New York City boroughs of Manhattan and Brooklyn
+    -   A Sign test to determine if housing prices in Sweden were different between 2016 and 2017
+
+7.  Tables and figures of key data were generated to present test-statistic outcomes and to visually represent the results.
+
+## Results
+
+### Question 1: Is there a relationship between GDP/capita and the number of personal computers per 100 individuals measured in 2005?
+
+Two datasets were used. <br>
+
+```{r q1step1}
+# 1. Import data
+library(openxlsx)
+gdp <- openxlsx::read.xlsx('../p02_inputs/GDP_per_capita_2005.xlsx')
+pcs <- openxlsx::read.xlsx('../p02_inputs/Personalcomputer_2005.xlsx')
+```
+
+<br> These datasets required minor data cleaning and joining in order to be used for downstream analyses. <br>
+
+```{r q1step2, message=FALSE}
+# 2. Restructure data
+library(tidyverse)
+joinedData <-
+    gdp %>% 
+        left_join(pcs) %>% 
+        filter(complete.cases(.))
+```
+
+<br> After importing and restructuring these data according to assignment instructions, a Shapiro-Wilk test was done on each variable to determine if the data deviated significantly from a normal distribution. <br>
+
+```{r q1step3.1, include=TRUE}
+# 3. Evaluate appropriateness of parametric techniques
+
+# Build function that might be used in future assignments
+tabSwResults <- function(testVector, vectorPlainEnglish
+                         , title = '', subtitle = ''
+                         , buildGtDirectly = TRUE
+                         , alpha = .05) {
+  localVar <- shapiro.test(testVector)
+  
+  results <-
+    data.frame(
+      Data = vectorPlainEnglish
+      , Method = localVar$method
+      , W = localVar$statistic
+      , p = localVar$p.value
+      ) %>%
+      mutate(
+        Interpretation =
+          case_when(
+            p < alpha ~ 'Significantly different than normal distribution'
+            , p >= alpha ~
+              'Not significantly different than normal distribution'
+            )
+      )
+  
+  rownames(results) <- NULL
+  
+  if (buildGtDirectly == F) results
+  else if (buildGtDirectly == T) {
+    results %>% 
+      gt() %>%
+  tab_header(
+    title = title
+    , subtitle = subtitle
+    ) %>%
+  fmt_number(columns = c(W)) %>% 
+  fmt_scientific(columns = c(p))
+  }
+}
+
+library(gt)
+rbind(
+  tabSwResults(joinedData$GDPperCAPITA, 'GDP per capita', buildGtDirectly = F)
+  , tabSwResults(joinedData$PC_per_100, 'PCs per 100 people'
+                 , buildGtDirectly = F)
+  ) %>%
+  gt() %>%
+  tab_header(
+    title = 'Table 1'
+    , subtitle =
+      'Results from Shapiro-Wilk normality tests on data for Question 1'
+    ) %>%
+  fmt_number(columns = c(W)) %>% 
+  fmt_scientific(columns = c(p))
+```
+
+<br> The p-values from the Shapiro-Wilk normality tests were below 0.05 in both cases. Furthermore, plotting kernel-density plots of the standardized data alongside a randomly-generated normal distribution reveals that these data differ considerably from normal (Figure 1, below). Note that the data were standardized prior to visualizing alongside the normal distribution since they were on scales that differed by orders of magnitude. The `scale_this` function was adopted from Stack Overflow ([reference 3](https://stackoverflow.com/questions/35775696/trying-to-use-dplyr-to-group-by-and-apply-scale)). <br>
+
+```{r q1step3.2, message=FALSE, include=TRUE}
+scale_this <- function(x){
+  (x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE)
+}
+
+set.seed(412)
+library(ggridges)
+joinedData %>%
+      mutate(
+        `GDP standardized` = scale_this(GDPperCAPITA)
+        , `PCs standardized` = scale_this(PC_per_100)
+        , `Normal distribution` = rnorm(n())
+        ) %>% 
+    select(Country
+           , `GDP standardized`
+           , `Normal distribution`
+           , `PCs standardized`
+           ) %>% 
+    pivot_longer(
+        cols = c(
+            `GDP standardized`
+            , `PCs standardized`
+            , `Normal distribution`
+            )
+        , names_to = 'Variables', values_to = 'Standardized values') %>% 
+    ggplot(aes(`Standardized values`, Variables, fill = Variables)) +
+    geom_density_ridges() +
+    theme(legend.position = 'none') +
+  labs(title = 'Figure 1'
+       , subtitle = 'Standardized GDP/capita and PCs/100 people vs a randomly-generated normal distribution') +
+  ylab('')
+```
+
+<br> A log-10 transformation of the data did not yield data that passed the Shapiro-Wilk test for normality (Table 2). <br>
+
+```{r q1step4}
+# 4. Transform and re-evaluate
+rbind(
+  tabSwResults(log10(joinedData$GDPperCAPITA)
+               , 'log-10 Transformed GDP per capita', buildGtDirectly = F)
+  , tabSwResults(log10(joinedData$PC_per_100)
+                 , 'log-10 Transformed PCs per 100 people', buildGtDirectly = F)
+  ) %>%
+  gt() %>%
+  tab_header(
+    title = 'Table 2'
+    , subtitle =
+      'Results from Shapiro-Wilk normality tests on log-10 transformed data for Question 1'
+    ) %>%
+  fmt_number(columns = c(W)) %>% 
+  fmt_scientific(columns = c(p))
+```
+
+<br> Since the raw data and transformed data were not appropriate for Pearson's product-moment correlation, a non-parametric alternative correlation was performed instead. Spearman's Rank-Order correlation was first attempted, but many ties in ranks were detected. When there are many ties, Kendall's $\tau$-b may be a preferred test ([reference 4](https://statistics.laerd.com/spss-tutorials/kendalls-tau-b-using-spss-statistics.php)), and thus that correlation method was performed instead. <br>
+
+```{r q1step5}
+# 5. Apply appropriate statistical technique
+
+# Build function that might be used in future assignments
+
+# This function will need to be modified with control-flow logic
+# so as to correctly label output columns for `method = 'pearson'`
+# or `method = 'spearman'`
+tabCorResults <- function(testVector1, testVector2
+                          , formulaInPlainEnglish
+                          , title = '', subtitle = ''
+                          , buildGtDirectly = TRUE
+                          , alternative = 'two.sided', method = 'kendall'
+                          , alpha = .05) {
+  
+  localVar <- cor.test(
+       testVector1
+       , testVector2
+       , alternative = alternative
+       , method = method)
+
+  results <-
+    data.frame(
+      Data = formulaInPlainEnglish
+      , Method = localVar$method
+      , Version = localVar$alternative
+      , z = localVar$statistic
+      , tau = localVar$estimate
+      , p = localVar$p.value
+      ) %>%
+      mutate(
+        Interpretation =
+          case_when(
+            p < alpha ~ 'Significant correlation'
+            , p >= alpha ~
+              'Non-significant correlation'
+            )
+      )
+
+  rownames(results) <- NULL
+  if (buildGtDirectly == F) results
+  else if (buildGtDirectly == T) {
+    results %>% 
+      gt() %>%
+  tab_header(
+    title = title
+    , subtitle = subtitle
+    ) %>%
+  fmt_scientific(columns = c(z, tau, p))
+  }
+}
+
+tabCorResults(joinedData$GDPperCAPITA, joinedData$PC_per_100
+              , 'GDP per capita as it correlates to PCs per 100 people', 'Table 3'
+              , "Results from Kendall's tau-b correlation on data for Question 1")
+```
+
+<br>
+
+#### The correlation was statistically significant (p \< 0.05).
+
+Figure 2, below, shows the positive correlation between GDP per capita and PCs per 100 people. Table 4, below, shows the Mean (±SD) and Median for each dataset. <br>
+
+```{r q1step6, message=FALSE}
+# 6 Final tables and figures
+joinedData %>%
+  ggplot(aes(x = GDPperCAPITA, y = PC_per_100)) +
+    geom_point(shape = 21) +
+    geom_smooth(method = lm, se = F, color = 'black', size = 0.5) +
+    theme(legend.position = 'none') +
+  labs(title = 'Figure 2'
+       , subtitle = 'GDP/capita and PCs/100 people were positively correlated in 2005') +
+  ylab('PCs per 100 people') +
+  xlab('GDP per capita in 2000 USD') +
+  scale_x_continuous(labels = dollar_format())
+
+# Build function that might be used in future assignments
+aggs <- function(ds, vector, vectorInPlainEnglish, title = '', subtitle = ''
+                 , buildGtDirectly = TRUE) {
+  results <- ds %>% 
+    summarize(
+      Parameter = paste({{vectorInPlainEnglish}})
+    , `Mean` = mean({{vector}})
+    , SD = sd({{vector}})
+    , Median = median({{vector}}))
+  
+  if (buildGtDirectly == F) results
+  else if (buildGtDirectly == T) {
+    results %>% 
+      gt() %>%
+  tab_header(
+    title = title , subtitle = subtitle
+    ) %>%
+  fmt_number(columns = c(Mean, SD, Median))
+  }
+}
+
+rbind(
+  aggs(joinedData, GDPperCAPITA, 'GDP per capita', buildGtDirectly = F)
+  , aggs(joinedData, PC_per_100, 'PCs per 100 people', buildGtDirectly = F)
+) %>% 
+  gt() %>%
+  tab_header(
+    title = 'Table 4'
+    , subtitle =
+      'Descriptive statistics about data for Question 1'
+    ) %>%
+  fmt_currency(columns = c(Mean, SD, Median), rows = 1) %>% 
+  fmt_engineering(columns = c(Mean, SD, Median), rows = 2)
+
+```
+
+<br>
+
+### Question 2: Has the electricity generation per capita in China increased from 1990 to 2005?
+
+A single dataset was used for this question. <br>
+
+```{r q2step1}
+# 1. Import data
+elData <- read.xlsx('../p02_inputs/Electricity Generation per capita.xlsx')
+```
+
+<br> The dataset needed to be filtered and was made more intuitive via renaming of variables and converting the `Year` variable to a numeric `R` class. <br>
+
+```{r q2step2}
+# 2. Restructure data
+elData %<>% 
+    rename(Country = `Electricity.generation.per.person.(kilowatt-hours)`) %>% 
+    filter(Country == 'China') %>% 
+    pivot_longer(cols = -c(Country), names_to = 'Year', values_to = 'Electricity generation per person in China (kw-hrs)') %>% 
+    select(-Country) %>% 
+    mutate(Year = as.numeric(Year))
+```
+
+<br> The assignment instructions specified that a simple linear model should be built and then diagnostic plots created based on the model. <br>
+
+```{r q2step3, message=FALSE}
+# 3. Evaluate appropriateness of parametric techniques
+
+# Visualize if the relationship is approximately linear
+elData %>% 
+  ggplot(aes(Year, `Electricity generation per person in China (kw-hrs)`)) + 
+  geom_point() +
+  geom_smooth(method = 'lm', se = F) +
+  labs(title = 'Figure 3'
+       , subtitle = 'Scatter plot with line of best fit (method = lm)') +
+  scale_y_continuous(labels = number_format())
+
+# Build model
+elLm <- lm(elData$`Electricity generation per person in China (kw-hrs)`~elData$Year)
+
+# Make diagnostic plots for assessing model's appropriateness
+
+# Build function that might be used in future assignments
+lmDiagPlots <- function(lm, startFigNum, runningSubCaption) {
+  
+  for (pl in c(1, 2, 3, 5)) {
+    if (pl == 1) figNum <- startFigNum
+    else if (pl > 1) figNum <- figNum + 1
+  
+    plot(lm, which = pl, sub.caption = runningSubCaption)
+    title(paste('Figure', figNum), adj = 0, line = 1) 
+    
+  }
+}
+
+lmDiagPlots(elLm
+            , 4
+            , 'Diagnostic Plot for El. generation / person in China by Year'
+          )
+```
+
+<br> Several of the diagnostic plots (Figure 3, Figure 4, and Figure 6 specifically) indicated that the relationship is not linear. The data needed to be transformed and a new linear model built. Two models were built on transformations of the y-variable --- Electricity generation per person in China (kw-hrs): a model using a log-10 transformations, and another model using a square root transformation. Of these two models, the log-10 transformed model appeared the most linear on a scatterplot, and thus, those results are shown in Figure 8 below.
+
+Note: the code and diagnostic plots for the model based on square-root transformed data are not shown, but are available upon request. <br>
+
+```{r q2step4, message=FALSE}
+# 4. Transform and re-evaluate
+# Visualize if the relationship is approximately linear
+elData %>% 
+  ggplot(aes(Year, log10(`Electricity generation per person in China (kw-hrs)`))) + 
+  geom_point() +
+  geom_smooth(method = 'lm', se = F) +
+  labs(title = 'Figure 8'
+       , subtitle = 'Scatter plot with line of best fit (method = lm)') +
+  scale_y_continuous(labels = number_format())
+
+# Build model
+log10ElLm <- lm(elData$`Electricity generation per person in China (kw-hrs)`~elData$Year)
+
+# Make diagnostic plots for assessing model's appropriateness
+lmDiagPlots(log10ElLm
+            , 9
+            , 'Diagnostic Plot for log10(El. generation / person in China) by Year'
+          )
+```
+
+<br> Some of the diagnostic plots still do not resemble the ideal situation for applying a linear regression model; specifically, Figures 9 and 11 --- the Residuals vs Fitted and Scale-Location plots --- reveal non-homogeneity of variance given the 'wave-like' patterns in the data. Nonetheless, the line-of-best fit on the scatterplot (Figure 8) seems to match the data quite well, indicating that a simple linear model is appropriate. The subjective perception of a wave-like pattern (and therefore non-homogeneity of variance) may be a consequence of having such a small sample size, and may not have been perceived with more samples.
+
+The fit model parameters are presented in Table 5. <br>
+
+```{r q2step5}
+# 5. Final tables and figures
+
+# Build function that might be used in future assignments
+
+# This function will need to be modified if one wants to tabulate more results
+# from `summary(lm)` and / or if `lm` refers to a model that is more
+# complicated than simpy `y ~ x`
+
+tabLmResults <- function(formula
+                          , formulaInPlainEnglish
+                          , title = '', subtitle = ''
+                          , buildGtDirectly = TRUE
+                          , lowThreshold = 1/3, highThreshold = 2/3
+                          ) {
+  
+  localVar <- summary(formula)
+  
+  predictorCoeffs <-
+    localVar$coefficients %>%
+    rownames() %>%
+    cbind(localVar$coefficients) %>%
+    as_tibble() %>%
+    rename(rownames = 1
+           , b = Estimate
+           , SEb = `Std. Error`
+           , t = `t value`
+           , p = `Pr(>|t|)`
+           ) %>% 
+    filter(str_detect(rownames, 'Intercept', negate = T)) %>%
+    # The next mutate steps may be more code-efficient with some version of
+    # mutate(across(), ~ .x), but I didn't figure it out.
+    mutate(
+      b = as.numeric(b)
+      , SEb = as.numeric(SEb)
+      , t = as.numeric(t)
+      , p = as.numeric(p)
+      )
+
+  results <-
+    data.frame(
+      Data = formulaInPlainEnglish
+      , Method = 'lm(y~x)'
+      , b = predictorCoeffs$b
+      , SEb = predictorCoeffs$SEb
+      , t = predictorCoeffs$t
+      , F = localVar$fstatistic[1]
+      , df = localVar$fstatistic[3]
+      , p = predictorCoeffs$p
+      , adjRsq = localVar$adj.r.squared
+      ) %>%
+      mutate(
+        Interpretation =
+          case_when(
+            adjRsq <= lowThreshold ~ 'Low level of correlation'
+            , ((lowThreshold < adjRsq) &
+                  (adjRsq <= highThreshold)) ~
+              'Moderate level of correlation'
+            , (highThreshold < adjRsq) ~
+              'High level of correlation'
+            )
+      ) %>% 
+    rename(`Adjusted R-squared` = adjRsq)
+
+  rownames(results) <- NULL
+  if (buildGtDirectly == F) results
+  else if (buildGtDirectly == T) {
+    results %>% 
+    gt() %>%
+    tab_header(
+      title = title, subtitle = subtitle
+      ) %>%
+    fmt_number(columns = c(b, SEb, t, F, df, `Adjusted R-squared`)) %>% 
+    fmt_scientific(columns = c(p))
+  }
+}
+
+tabLmResults(log10ElLm
+             , 'Electricity generation per person in China (kw-hrs) by Year'
+             , title = 'Table 5'
+             , subtitle = 'Linear Model parameters for data from Question 2'
+             )
+```
+
+<br>
+
+#### The linear model was statistically significant (p \< 0.05) and the strength of the relationship was high (adjusted R^2^ = 0.87).
+
+### Question 3: Is there a difference in income between the New York districts,[sic] Manhattan and Brooklyn?
+
+A single dataset was used for this question. <br>
+
+```{r q3step1}
+# 1. Import data
+nyHousing <- read.xlsx('../p02_inputs/Lander_HousingNew.xlsx')
+```
+
+<br> The data had columns that were not needed for analysis, but they did not need to be removed, either. Therefore, data was interrogated for appropriateness of using parametric methods without any so-called 'data-wrangling'. <br>
+
+```{r q3step2, message=FALSE}
+# 2. Evaluate appropriateness of parametric techniques
+nyHousing %>% 
+    ggplot(aes(Income, Boro, fill = Boro)) +
+    geom_density_ridges() +
+    theme(legend.position = 'none') +
+  labs(title = 'Figure 13'
+       , subtitle = '2019 Income in two New York City Boroughs') +
+  ylab('') +
+  scale_x_continuous(labels = dollar_format())
+```
+
+<br> It was clear from the kernel-density plots that the income distributions were not normally distributed. The data were log-10 transformed and tested with the Shapiro-Wilk method. <br>
+
+```{r q3step4}
+# 4. Transform and re-evaluate
+nyHousing %<>% 
+    mutate(`log10 Income` = log10(Income))
+
+swMan <-
+  nyHousing %>%
+    filter(Boro == 'Manhattan') %>% 
+    select(`log10 Income`) %>%
+    unlist() %>% 
+    as.numeric() %>% 
+    tabSwResults('log-10 transformed 2019 income in Manhattan'
+                 , buildGtDirectly = F)
+
+swBro <-
+  nyHousing %>%
+    filter(Boro == 'Brooklyn') %>% 
+    select(`log10 Income`) %>%
+    unlist() %>% 
+    as.numeric() %>% 
+    tabSwResults('log-10 transformed 2019 income in Brooklyn'
+                 , buildGtDirectly = F)
+
+rbind(swMan, swBro) %>% 
+  gt() %>%
+  tab_header(
+    title = 'Table 6'
+    , subtitle =
+      'Results from Shapiro-Wilk normality tests on data for Question 3'
+    ) %>%
+  fmt_number(columns = c(W)) %>% 
+  fmt_scientific(columns = c(p))
+```
+
+<br> Both log-10 transformed datasets passed the Shapiro-Wilk test and were therefore deemed suitable for use in an unpaired t-test.
+
+Note: code and diagnostic plots for log-transformed data (as well as square root transformed data) are not shown, but are available upon request. <br>
+
+```{r q3step5}
+# 5. Apply appropriate statistical technique
+
+# Build function that might be used in future assignments
+
+# This function will need to be modified if one wants to tabulate results
+# from other versions of the t-test (e.g., one-sided, paired, equal-variance)
+
+tabTtestResults <- function(formula
+                          , formulaInPlainEnglish
+                          , title = '', subtitle = ''
+                          , buildGtDirectly = TRUE
+                          , alternative = 'two.sided'
+                          , paired = FALSE
+                          , var.equal = FALSE , alpha = .05) {
+
+  localVar <- t.test(formula
+    , alternative = alternative, paired = paired
+    , var.equal = var.equal, conf.level = (1 - alpha))
+  
+  localMeans <-
+    localVar$estimate %>%
+    enframe() %>%
+    mutate(name = str_replace(name, 'mean in group', 'Mean for ')) %>% 
+    pivot_wider()
+
+  results <-
+    data.frame(
+      Data = formulaInPlainEnglish
+      , Method = localVar$method
+      , Alternative = localVar$alternative
+      , t = abs(localVar$statistic)
+      , df = localVar$parameter
+      , p = localVar$p.value
+      , lowCI =
+            min(abs(localVar$conf.int[1]), abs(localVar$conf.int[2]))
+      , uppCI =
+            max(abs(localVar$conf.int[1]), abs(localVar$conf.int[2]))
+      ) %>%
+      mutate(
+        Interpretation =
+          case_when(
+            p < alpha ~ 'Significant difference in means'
+            , p >= alpha ~
+              'Non-significant difference in means'
+            )
+      ) %>% 
+    cbind(localMeans) %>% 
+    rename(`Mean difference, lower end of CI` = lowCI
+           , `Mean difference, upper end of CI` = uppCI)
+  
+  rownames(results) <- NULL
+  if (buildGtDirectly == F) results
+  else if (buildGtDirectly == T) {
+    results %>% 
+      gt() %>%
+      tab_header(
+        title = title
+        , subtitle = subtitle
+        ) %>%
+      fmt_number(columns = c(t, df
+                             , `Mean difference, lower end of CI`
+                             , `Mean difference, upper end of CI`
+                             , 10, 11)) %>% 
+      fmt_scientific(columns = c(p))
+  }
+}
+
+tabTtestResults(nyHousing$`log10 Income`~nyHousing$Boro
+                , 'Log-10 transformed income by Borough'
+                , title = 'Table 7'
+                , subtitle = 'Results from unpaired t-test on log-10 transformed income data for Question 3')
+
+```
+
+<br>
+
+#### The t-test was statistically significant (p \< 0.05). The log-10 transformed incomes in Manhattan were greater than the log-10 transformed incomes in Brooklyn in 2019.
+
+#### <br>
+
+```{r q3step6}
+# 6. Final tables and figures
+
+nyHousing %>% 
+    ggplot(aes(Boro, `log10 Income`, fill = Boro)) +
+    geom_boxplot() +
+    labs(title = 'Figure 14', subtitle = 'Boxplot of log-10 transformed income') +
+    xlab('Borough') + ylab('Income (log-10 transformed USD)') +
+    theme(legend.position = 'none')
+
+nyHousing %>% 
+    ggplot(aes(Boro, Income, fill = Boro)) +
+    geom_boxplot() +
+    labs(title = 'Figure 15', subtitle = 'Boxplot of untransformed income') +
+    xlab('Borough') + ylab('Income (untransformed)') +
+    theme(legend.position = 'none') +
+    scale_y_continuous(labels = dollar_format())
+
+bro <- nyHousing %>% filter(Boro == 'Brooklyn')
+man <- nyHousing %>% filter(Boro == 'Manhattan')
+
+rbind(
+  aggs(bro, Income, 'Income in Brooklyn', buildGtDirectly = F)
+  , aggs(man, Income, 'Income in Manhattan', buildGtDirectly = F)
+) %>% 
+  gt() %>%
+  tab_header(
+    title = 'Table 8'
+    , subtitle =
+      'Descriptive statistics about data for Question 3'
+    ) %>%
+  fmt_currency(columns = c(Mean, SD, Median))
+```
+
+<br>
+
+### Question 4: Are there differences in house pricing (SEK/m^2^) in Sweden between 2016 and 2017?
+
+There was only one dataset for this question. <br>
+
+```{r q4step1, message=FALSE}
+# 1. Import data
+library(readr)
+sweHousing <- read_tsv('../p02_inputs/Housepricing_sweden.txt')
+```
+
+<br> These data did not need to be restructured or otherwise manipulated before going into EDA. <br>
+
+```{r q4step2, message=FALSE}
+# 2. Evaluate appropriateness of parametric techniques
+sweHousing %>% 
+    pivot_longer(cols = c(`2016_sek_sqrm`, `2017_sek_sqrm`), names_to = 'Year', values_to = 'SEK per square meter') %>% 
+  mutate(Year = str_extract(Year, '(\\d)+')) %>% 
+    ggplot(aes(`SEK per square meter`, Year, fill = Year)) + 
+    geom_density_ridges() +
+  theme(legend.position = NULL) +
+  labs(title = 'Figure 16'
+       , subtitle = 'Kernel-density plots of the raw data for Question 4') +
+  scale_x_continuous(labels = dollar_format(prefix = '', suffix = 'kr', big.mark = ' '))
+
+rbind(
+    tabSwResults(sweHousing$`2016_sek_sqrm`
+                 , 'Swedish housing prices in 2016 (SEK per square meter)'
+                 , buildGtDirectly = F)
+    , tabSwResults(sweHousing$`2017_sek_sqrm`
+                   , 'Swedish housing prices in 2017 (SEK per square meter)'
+                 , buildGtDirectly = F)
+) %>% 
+  gt() %>% 
+  tab_header(title = 'Table 9'
+    , subtitle = 'Shapiro-Wilk test results on raw data for Question 4'
+    ) %>%
+  fmt_number(columns = c(W)) %>% 
+  fmt_scientific(columns = c(p))
+```
+
+<br> The 2017 data differed significantly from a normal distribution, as evidenced by the results of the Shapiro-Wilk test and plotting the kernel-density plot. Given that this dataset only has 12 records --- one for each month of the years 2016 and 2017 --- transformations were ineffective in making the data better-approximate normal distributions. Attempted transformations include log-10, square root, and Box-Cox.
+
+Note: The code and results from attempts to transform the data are not included here but are available upon request.
+
+The data were paired by month, and thus a paired inferential method was appropriate. Since the data were not normally distributed, a paired t-test could not be utilized. The natural non-parametric alternative to a paired t-test is the Wilcoxon signed-rank test. However, the Wilcoxon signed-rank test is only valid when the distribution of differences between groups is symmetrical [reference 2](https://statistics.laerd.com/spss-tutorials/wilcoxon-signed-rank-test-using-spss-statistics.php). This was investigated. <br>
+
+```{r q4step3, message=FALSE}
+# 3. Fall back to non-parametric techniques
+sweHousing %>% 
+  mutate(Differences = `2017_sek_sqrm` - `2016_sek_sqrm`) %>% 
+    ggplot(aes(`Differences`)) + 
+  geom_histogram(fill = 'cornflowerblue') +
+  theme(legend.position = NULL) +
+  labs(title = 'Figure 17'
+       , subtitle = 'Diagnostic plot: distribution of differences in Swedish housing prices between 2016 and 2017'
+       , y = 'Frequency')
+```
+
+<br> The distribution of differences were not symmetrical. Thus, a Sign test --- instead of a Wilcoxon sign-rank test --- was used to see if there are differences in prices between the years. This is because a Sign test has even fewer assumptions than a Wilcoxon sign-rank test [reference 5](https://statistics.laerd.com/spss-tutorials/sign-test-using-spss-statistics.php). <br>
+
+```{r q4step4}
+# 4. Apply appropriate statistical technique
+
+# Build function that might be used in future assignments
+
+tabSignResults <- function(data, formula, formulaInPlainEnglish
+                         , title = '', subtitle = ''
+                         , buildGtDirectly = TRUE
+                         , p.adjust.method = 'holm'
+                         , alpha = .05) {
+  
+  localVar <-
+    pairwise_sign_test(data, formula, p.adjust.method = p.adjust.method
+                       , detailed = T)
+  
+  results <-
+    data.frame(
+      Data = formulaInPlainEnglish
+      , Method = localVar$method
+      , Alternative = localVar$alternative
+      , adj.Method = tools::toTitleCase(p.adjust.method)
+      , S = localVar$statistic
+      , df = localVar$df
+      , p = localVar$p.adj
+      , lowCI =
+            min(abs(localVar$conf.low), abs(localVar$conf.high))
+      , uppCI =
+            max(abs(localVar$conf.low), abs(localVar$conf.high))
+      ) %>%
+      mutate(
+        Interpretation =
+          case_when(
+            p < alpha ~ 'Medians are significantly different '
+            , p >= alpha ~
+              'Medians are not significantly different'
+            )
+      ) %>% 
+    rename(`p-adjustment method` = adj.Method
+           , `Adjusted p` = p
+           , `Median difference, lower end of CI` = lowCI
+           , `Median difference, upper end of CI` = uppCI)
+  
+  rownames(results) <- NULL
+  
+  if (buildGtDirectly == F) results
+  else if (buildGtDirectly == T) {
+    results %>% 
+      gt() %>%
+  tab_header(
+    title = title
+    , subtitle = subtitle
+    ) %>%
+  fmt_number(columns = c(S, df, `Median difference, lower end of CI`
+                         , `Median difference, upper end of CI`)) %>% 
+  fmt_scientific(columns = c(`Adjusted p`))
+  }
+}
+
+sweHousingLong <-
+  sweHousing %>% 
+    select(`2016_sek_sqrm`, `2017_sek_sqrm`) %>% 
+    pivot_longer(cols = c(`2016_sek_sqrm`, `2017_sek_sqrm`), names_to = 'Year', values_to = 'Sek per sqrm')
+
+library('rstatix')
+
+tabSignResults(sweHousingLong, `Sek per sqrm` ~ Year
+                   , 'SEK per square meter by year'
+                   , 'Table 10'
+                   , 'Sign test results for question 4')
+```
+
+<br>
+
+#### There is a statistically significant difference in median housing price in Sweden between 2016 and 2017 (p \< 0.05).
+
+<br>
+
+```{r q4step5}
+# 5. Final tables and figures
+
+sweHousingLong %>% 
+    ggplot(aes(Year, `Sek per sqrm`, fill = Year)) +
+    geom_boxplot() +
+    labs(title = 'Figure 18'
+         , subtitle = 'Boxplot of Swedish housing prices by year') +
+    ylab('SEK per square meter') +
+    theme(legend.position = 'none') +
+    scale_y_continuous(labels = dollar_format(prefix = '', suffix = 'kr', big.mark = ' '))
+
+rbind(
+  aggs(sweHousing, `2016_sek_sqrm`, vectorInPlainEnglish = '2016', buildGtDirectly = F)
+  , aggs(sweHousing, `2017_sek_sqrm`, vectorInPlainEnglish = '2017', buildGtDirectly = F)
+) %>% 
+  gt() %>% 
+  tab_header(title = 'Table 11', subtitle = 'Sweden housing prices (SEK)') %>% fmt_number(columns = c(Mean, SD, Median), decimals = 0)
+```
+
+<br>
+
+## Discussion
+
+Discuss your findings and make conclusions. Be sure to answer questions.
+
+### Question 1
+
+There was a statistically significant positive correlation between GDP per capita and the number of personal computers per 100 individuals across various countries in 2005.
+
+### Question 2
+
+There has been a statistically significant increase in the electricity generation per capita in China from 1990 to 2005.
+
+### Question 3
+
+In 2019 the incomes in Manhattan were statistically greater than the incomes in Brooklyn.
+
+### Question 4
+
+The housing prices in Sweden were significantly greater in 2017 than they were in 2016. <br>
+
+## References
+
+1.  [Laerd Statistics Mann-Whitney U Test](https://statistics.laerd.com/spss-tutorials/mann-whitney-u-test-using-spss-statistics.php)
+2.  [Laerd Statistics Wilcoxon Signed-Rank Test](https://statistics.laerd.com/spss-tutorials/wilcoxon-signed-rank-test-using-spss-statistics.php)
+3.  [`scale_this` function from Stack Overflow](https://stackoverflow.com/questions/35775696/trying-to-use-dplyr-to-group-by-and-apply-scale)
+4.  [Laerd Statistics Kendall's Tau-b](https://statistics.laerd.com/spss-tutorials/kendalls-tau-b-using-spss-statistics.php)
+5.  [Laerd Statistics Sign Test](https://statistics.laerd.com/spss-tutorials/sign-test-using-spss-statistics.php)

@@ -1,0 +1,451 @@
+---
+title: "Assignment 1 scratch workbook"
+output: pdf_document
+knit: (function(inputFile, encoding) {
+    rmarkdown::render(inputFile, encoding = encoding, output_dir = "p03_outputs")
+  })
+---
+
+# Part 3 Assignment 1
+
+What follows is a comprehensive step-by-step report of how I went through the analyses, since the way I went through the analyses is not identical to the IMRaD structure requested for submission to the assignment.  
+
+### Part 1. Correlation between GDP and access to personal computers in the year of 2005
+
+#### Question 1: Is there a relationship between GDP/capita and the number of personal computers per 100 individuals measured in 2005?
+
+Importing the data.
+
+```{r dataImportAndJoining}
+library(ggplot2)
+library(tidyverse)
+library(openxlsx)
+
+# Load data
+gdp <- openxlsx::read.xlsx('../p02_inputs/GDP_per_capita_2005.xlsx')
+pcs <- openxlsx::read.xlsx('../p02_inputs/Personalcomputer_2005.xlsx')
+
+# Join data
+joinedData <-
+    gdp %>% 
+        left_join(pcs) %>% 
+        filter(complete.cases(.))
+
+```
+
+Getting summary statistics.
+
+```{r summaryStats}
+joinedData %>% 
+    summarize(
+        medianGDPperCapita = median(GDPperCAPITA)
+        , meanGDPperCapita = mean(GDPperCAPITA)
+        , sdGDPperCapita = sd(GDPperCAPITA)
+        , medianPC_per_100 = median(PC_per_100)
+        , meanPC_per_100 = mean(PC_per_100)
+        , sdPC_per_100 = sd(PC_per_100)
+        )
+```
+
+**Summary statistics for raw data**
+
+GDP is rounded to nearest whole dollar. PCs are rounded to the nearest integer.
+
+| Measure                           | Mean (± SD)    | Median |
+|-----------------------------------|----------------|--------|
+| GDP per Capita (in 2000 US\$)     | 7964 (± 12329) | 2197   |
+| Number of PCs used per 100 people | 16 (± 22)      | 6      |
+
+```{r assessingNormality}
+library(ggridges)
+
+# See reference 1
+scale_this <- function(x){
+  (x - mean(x, na.rm=TRUE)) / sd(x, na.rm=TRUE)
+}
+
+set.seed(412)
+joinedData %<>% 
+    mutate(
+        `GDP standardized` = scale_this(GDPperCAPITA)
+        , `PCs standardized` = scale_this(PC_per_100)
+        , `Normal distribution` = rnorm(n())
+        )
+
+joinedData %>% 
+    select(Country
+           , `GDP standardized`
+           , `Normal distribution`
+           , `PCs standardized`
+           ) %>% 
+    pivot_longer(
+        cols = c(
+            `GDP standardized`
+            , `PCs standardized`
+            , `Normal distribution`
+            )
+        , names_to = 'Variables', values_to = 'Scaled values') %>% 
+    ggplot(aes(`Scaled values`, Variables, fill = Variables)) +
+    geom_density_ridges() +
+    theme(legend.position = 'none')
+```
+
+The standardized data do not appear to follow a normal distribution.
+
+```{r shapiroWilk}
+shapiro.test(joinedData$GDPperCAPITA)
+shapiro.test(joinedData$PC_per_100)
+```
+
+The Shapiro-Wilk tests also confirm that the data are not normally-distributed. Thus, in performing correlation analyses, either the data should be transformed before being analyzed, or a non-parametric alternative to Pearson product-moment should be used.
+
+```{r log10TransformTestsForNormality}
+set.seed(412)
+joinedData %<>% 
+    mutate(
+        `log10 GDP` = log10(GDPperCAPITA)
+        , `log10 PCs` = log10(PC_per_100)
+        ,`log10 GDP standardized` = scale_this(`log10 GDP`)
+        , `log10 PCs standardized` = scale_this(`log10 PCs`)
+        )
+
+joinedData %>% 
+    select(Country
+           , `log10 GDP standardized`
+           , `Normal distribution`
+           , `log10 PCs standardized`
+           ) %>% 
+    pivot_longer(
+        cols = c(
+            `log10 GDP standardized`
+            , `log10 PCs standardized`
+            , `Normal distribution`
+            )
+        , names_to = 'Variables', values_to = 'Scaled values') %>% 
+    ggplot(aes(`Scaled values`, Variables, fill = Variables)) +
+    geom_density_ridges() +
+    theme(legend.position = 'none')
+
+shapiro.test(joinedData$`log10 GDP`)
+shapiro.test(joinedData$`log10 PCs`)
+```
+
+Although using a log10 transformation did make the data look more like normally-distributed datasets, both datasets still fail the Shapiro-Wilk test (p-value for both is under 0.05). Thus, I will proceed with Spearman Rank-Order correlation on the raw data.
+
+```{r Spearman}
+with(joinedData, cor.test(joinedData$GDPperCAPITA, joinedData$PC_per_100, alternative="two.sided", 
+  method="spearman"))
+
+scatterplot(PC_per_100~GDPperCAPITA
+            , regLine=TRUE
+            , smooth = F
+            , id=list(method='identify')
+            , boxplots='xy'
+            , data=joinedData)
+```
+
+**The correlation is statistically significant.**
+
+| Correlation coefficient | df | p-value | Name of test |
+|---|---|---|---|
+| $\rho$ = 0.8547637 | N - 2 = 153 | < 2.2e-16 | Spearman's rank correlation |
+
+### Part 2. Regression analysis
+
+#### Question 2: Has the electricity generation per capita in China increased from 1990 to 2005?
+
+Import and wrangle electricity data.  
+
+```{r importEl}
+elData <- read.xlsx('../p02_inputs/Electricity Generation per capita.xlsx')
+
+elData %<>% 
+    rename(Country = `Electricity.generation.per.person.(kilowatt-hours)`) %>% 
+    filter(Country == 'China') %>% 
+    pivot_longer(cols = -c(Country), names_to = 'Year', values_to = 'Electricity generation per person in China (kw-hrs)') %>% 
+    select(-Country) %>% 
+    mutate(Year = as.numeric(Year))
+```
+Build linear regression model.  
+
+```{r}
+
+# Build model
+elLm <- lm(elData$`Electricity generation per person in China (kw-hrs)`~elData$Year)
+
+# Make plots for assessing model's appropriateness
+plot(elLm)
+
+scatterplot(elData$`Electricity generation per person in China (kw-hrs)`~elData$Year, regLine=TRUE, 
+  smooth=list(span=0.5, spread=TRUE), boxplots='xy')
+```
+The Residuals vs Fitted and the scatter plot indicate the data are not linear. Will try a log10 transformation on the response variable.
+
+```{r elLmLog}
+elData %<>% 
+    mutate(`Electricity generation per person in China (log10(kw-hrs))` = log10(`Electricity generation per person in China (kw-hrs)`))
+
+# Build model
+elLmLog <- lm(elData$`Electricity generation per person in China (log10(kw-hrs))`~elData$Year)
+
+# Make plots for assessing model's appropriateness
+plot(elLmLog)
+
+scatterplot(elData$`Electricity generation per person in China (log10(kw-hrs))`~elData$Year, regLine=TRUE, 
+  smooth=list(span=0.5, spread=TRUE), boxplots='xy')
+```
+The Residuals vs Fitted still indicate the date are not appropriate for a linear model, since there is not homogeneity of variance. Will try a square-root transformation on the response variable. 
+
+```{r elLmSqrt}
+elData %<>% 
+    mutate(`Electricity generation per person in China (sqrt(kw-hrs))` = sqrt(`Electricity generation per person in China (kw-hrs)`))
+
+# Build model
+elLmSqrt <- lm(elData$`Electricity generation per person in China (sqrt(kw-hrs))`~elData$Year)
+
+# Make plots for assessing model's appropriateness
+plot(elLmSqrt)
+
+scatterplot(elData$`Electricity generation per person in China (sqrt(kw-hrs))`~elData$Year, regLine=TRUE, 
+  smooth=list(span=0.5, spread=TRUE), boxplots='xy')
+```
+
+The best model is the log10-transformed model, as it appears the most linear.
+
+```{r elLmLogSummary}
+summary(elLmLog)
+```
+| Regression coefficient *b* | *SE~b~* | *t* | *df* | *p* | Adjusted R^2^ |
+| --- | --- | --- | --- | --- | --- |
+| 0.036697 | 0.001547 | 23.71 | 17 | 1.817e-14 | 0.9689 |
+
+### Part 3. Testing differences between groups
+
+#### Question 3: Is there a difference in income between the New York districts, Manhattan and Brooklyn?
+
+```{r importNYHousingData}
+nyHousing <- read.xlsx('../p02_inputs/Lander_HousingNew.xlsx')
+nyHousing %>% 
+    ggplot(aes(Income, Boro, fill = Boro)) +
+    geom_density_ridges() +
+    theme(legend.position = 'none')
+```
+
+Neither group is normally distributed. Try to transform.  
+
+```{r nyHousingTransformations}
+nyHousing %>% 
+    mutate(`log10 Income` = log10(Income)
+           , `sqrt Income` = sqrt(Income)
+           , `log10 income standardized` = scale_this(`log10 Income`)
+           , `sqrt income standardized` = scale_this(`sqrt Income`)
+           , `Normal distribution` = rnorm(n())
+           ) %>% 
+    select(Boro
+           , `log10 income standardized`
+           , `sqrt income standardized`
+           , `Normal distribution`) %>% 
+    pivot_longer(
+        cols = c(
+            `log10 income standardized`
+            , `sqrt income standardized`
+            , `Normal distribution`
+        )
+        , names_to = 'Variables', values_to = 'Scaled values'
+    ) %>% 
+    mutate(`Assessment group` = paste(Boro, Variables)
+           , `Assessment group` = replace(`Assessment group`, str_detect(`Assessment group`, 'Normal'), 'Normal Distribution'),
+           Boro = replace(Boro, str_detect(`Assessment group`, 'Normal'), 'Both borroughs')
+           ) %>% 
+    ggplot(aes(`Scaled values`, `Assessment group`, fill = Boro)) +
+    geom_density_ridges() +
+    theme(legend.position = 'none')
+
+```
+None of the transformations are convincingly 'normal' to my eye. However, the log10-transformed version may at least pass a Shapiro-Wilk test.  
+
+```{r swTestlog10nyHousing}
+nyHousing %>% 
+    filter(Boro == 'Manhattan') %>% 
+    select(`log10 Income`) %>%
+    unlist() %>% 
+    as.numeric() %>% 
+    shapiro.test()
+
+nyHousing %>% 
+    filter(Boro == 'Brooklyn') %>% 
+    select(`log10 Income`) %>%
+    unlist() %>% 
+    as.numeric() %>% 
+    shapiro.test()
+```
+The log-10 transformed data from both boroughs do not differ from normality enough to fail the Shapiro-Wilk test, so I will proceed analyzing those transformed data.  
+
+```{r nyLog10ttest}
+with(nyHousing,
+t.test(`log10 Income`~Boro, alternative='two.sided', conf.level=.95, var.equal=FALSE)
+)
+```
+Incomes are higher in Manhattan.
+
+| *t* | *df* | *p-value* |
+|---|---|---|
+| -5.8264 | 55.37 | 3.004e-7|
+
+```{r summaryStatsAndPlotsNy}
+nyHousing %>% 
+    group_by(Boro) %>% 
+    summarize(mean = mean(Income)
+              , median = median(Income)
+              , sd = sd(Income)
+              )
+
+nyHousing %>% 
+    ggplot(aes(Boro, `log10 Income`, fill = Boro)) +
+    geom_boxplot() +
+    ggtitle('Incomes by borough') +
+    xlab('Borough') + ylab('Income (log10 transformed)') +
+    theme(legend.position = 'none')
+
+nyHousing %>% 
+    ggplot(aes(Boro, Income, fill = Boro)) +
+    geom_boxplot() +
+    ggtitle('Incomes by borough') +
+    xlab('Borough') + ylab('Income (untransformed)') +
+    theme(legend.position = 'none')
+
+```
+
+
+#### Question 4: Are there differences in house pricing (SEK/m^2^) in Sweden between 2016 and 2017?
+
+Import the data.
+
+```{r}
+library(readr)
+sweHousing <- read_tsv('../p02_inputs/Housepricing_sweden.txt')
+```
+
+Since I find it difficult to accurately judge if a distribution is normally-distributed by simply viewing histograms or kernel density plots, I will directly test normality with the Shapiro-Wilk test.  
+
+```{r swTestSweHousing}
+shapiro.test(sweHousing$`2016_sek_sqrm`)
+shapiro.test(sweHousing$`2017_sek_sqrm`)
+```
+The 2017 data deviate from a normal distribution. I will view the data, and if they are right-skewed, I will try a log10 transformation and re-test.  
+
+```{r plotRawSweHousing2017}
+sweHousing %>% 
+    pivot_longer(cols = c(`2016_sek_sqrm`, `2017_sek_sqrm`), names_to = 'Year', values_to = 'Sek per sqrm') %>% 
+    ggplot(aes(`Sek per sqrm`, Year, fill = Year)) + 
+    geom_density_ridges()
+```
+
+The 2017 data actually look left-skewed, so will need to do a different kind of transformation. Will try Box-Cox method to empirically determine a $\lambda$ value for transformation instead of using guess-and check iterations. I took inspiration from the site in reference 2.   
+
+
+```{r plotRawSweHousing2017}
+library(conflicted)
+conflict_prefer(name = "select", winner = "dplyr", losers = "MASS")
+library(MASS)
+
+sweHousingLong <- sweHousing %>% 
+  pivot_longer(cols = c(`2016_sek_sqrm`, `2017_sek_sqrm`), names_to = 'Year', values_to = 'Sek per sqrm')
+
+sweHousing$`2017_sek_sqrm` %>% hist()
+
+bcResults <-
+  boxcox(sweHousingLong$`Sek per sqrm`~sweHousingLong$Year, lambda = seq(-10,10, 1/10), interp = T)
+
+lambda <-
+  bcResults %>% 
+  as.tibble() %>% 
+  filter(y == max(y)) %>% 
+  select(x) %>%
+  unlist()
+
+sweHousing %>% 
+    pivot_longer(cols = c(`2016_sek_sqrm`, `2017_sek_sqrm`), names_to = 'Year', values_to = 'Sek per sqrm') %>% 
+    ggplot(aes(`Sek per sqrm`, Year, fill = Year)) + 
+    geom_density_ridges()
+
+sweHousing %>% 
+    pivot_longer(cols = c(`2016_sek_sqrm`, `2017_sek_sqrm`), names_to = 'Year', values_to = 'Sek per sqrm') %>% 
+  mutate(`Box-cox transformed Sek per sqrm` = (`Sek per sqrm` ^ lambda - 1) / lambda) %>% 
+    ggplot(aes(`Box-cox transformed Sek per sqrm`, Year, fill = Year)) + 
+    geom_density_ridges()
+```
+Here I finally started getting frustrated since the transformations were not making any difference to the distributions. So I did a simple histogram of the raw data and realized that there were only 12 records in total. This means that no matter how the data are transformed, they will have nearly an identical shape because there are not enough samples for the transformations effectively affect the distribution.
+
+```{r simpleHistOfRaw}
+hist(sweHousing$`2016_sek_sqrm`)
+hist(sweHousing$`2017_sek_sqrm`)
+```
+
+Thus, I will proceed with a non-parametric alternative to the paired t-test. The natural choice is the Wilcoxon signed-rank test, but I need to validate that the distribution of differences between groups is symmetrical.  
+
+```{r symmetryOfDiffs}
+sweHousing %>% 
+  mutate(diffs = `2017_sek_sqrm` - `2016_sek_sqrm`) %>% 
+  ggplot(aes(diffs)) +
+  geom_histogram()
+```
+
+The distribution of differences are clearly not symmetrical. Thus, I will fall back to a Sign test to see if there are differences in prices between the years.  
+
+```{r signTest}
+library('rstatix')
+
+sweHousing %>% 
+    select(`2016_sek_sqrm`, `2017_sek_sqrm`) %>% 
+    pivot_longer(cols = c(`2016_sek_sqrm`, `2017_sek_sqrm`), names_to = 'Year', values_to = 'Sek per sqrm') %>% 
+    pairwise_sign_test(`Sek per sqrm` ~ Year)
+```
+
+There is a significant difference.
+
+| *statistic* | *df* | *p-value* |
+|---|---|---|
+| 2 | 12 | 0.039|
+
+```{r getting summary stats}
+sweHousingLong %>% 
+  group_by(Year) %>% 
+  summarize(
+    `Mean (± SD)` =
+      paste0(
+        round(mean(`Sek per sqrm`),0)
+        , ' (± '
+        , round(sd(`Sek per sqrm`),0)
+        , ')'
+        )
+    , Median = round(median(`Sek per sqrm`)))
+```
+
+
+| Year                           | Mean (± SD)    | Median |Test used|*statistic*|*df*|*p-value*|
+|-----------------------------------|----------------|--------|---|---|---|---|
+| 2016     | 7964 (± 12329) |    |Sign test|2 |12|0.039 |
+| 2017 | 16 (± 22)      |       | | | | |
+
+
+## References
+
+1.  [`scale_this` function](https://stackoverflow.com/questions/35775696/trying-to-use-dplyr-to-group-by-and-apply-scale)
+2.  [Using Box-Cox transformations](https://rcompanion.org/handbook/I_12.html)
+3. [Assumptions for Wilcoxon Signed-Rank Test](https://statistics.laerd.com/spss-tutorials/wilcoxon-signed-rank-test-using-spss-statistics.php)
+4. [Assumptions for Sign Test](https://statistics.laerd.com/spss-tutorials/sign-test-using-spss-statistics.php)
+
+
+# Unresolved questions
+
+-   Knitting pdfs fails with gt()
+-   Unable to get geom_smooth() and any aes() other than x and y (if add fill for the geom_point, then the line from smooth disappears)
+-   Knitting geom_point to word looks very different than output in Markdown preview
+-   How to add switches to my tabCorResults function so that output labels are appropriate for each method
+-   How to test empirically if a dataset is "monotonic" before using Spearman's Rank-Order correlation
+-   How to add padding at the bottom of a gt() table
+-   How to ensure gt() tables are knit to output word documents without printing all of the other messages/errors
+-   Get subtitles to work with ggplotly
+-   When to use Somer's d instead of Spearmans or Kendall's
+-   How to use mutate(across(), as.numeric(~ .x)) as in tabLmResults without getting errors?
