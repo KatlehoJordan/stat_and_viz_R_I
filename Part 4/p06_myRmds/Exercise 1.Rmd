@@ -1,0 +1,157 @@
+---
+title: "Exercise 1"
+knit: (function(inputFile, encoding) {
+    rmarkdown::render(inputFile, encoding = encoding, output_dir = "p03_outputs")
+  })
+output:
+  html_document:
+    toc: true
+---
+
+# Exercise introduction
+
+This is Exercise 1 in Part 4 of the course.
+
+The purpose of the exercise is to cover ANOVA and Kruskal Wallis
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Part 1: Different costs between different housing options in Stockholm  
+
+### Step 1: Import data   
+
+```{r dataImport}
+housing <- readr::read_tsv('../p02_inputs/Cost_month.txt') %>% tibble()
+```
+
+### Step 2: One-way ANOVA  
+
+```{r owAnova}
+library(mvtnorm, pos=70)
+library(survival, pos=70)
+library(TH.data, pos=70)
+library(multcomp, pos=70)
+library(abind, pos=74)
+
+housing %<>%
+    mutate(Housing = as.factor(Housing))
+
+costModel <- aov(Costpermonth_SEK ~ Housing, data=housing)
+
+oldpar <- par(oma=c(0,0,3,0), mfrow=c(2,2))
+plot(costModel)
+par(oldpar)
+```
+
+```{r boxcoxTransform}
+library(MASS)
+bc <- boxcox(Costpermonth_SEK ~ Housing, data = housing)
+lambda <- bc$x[which.max(bc$y)]
+bcCostModel <- aov(((Costpermonth_SEK ^ lambda - 1) / lambda) ~ Housing, data = housing)
+oldpar <- par(oma=c(0,0,3,0), mfrow=c(2,2))
+plot(bcCostModel)
+par(oldpar)
+```
+
+
+
+```{r anovaPosthocs}
+summary(bcCostModel)
+summary(costModel)
+library(RcmdrMisc)
+
+with(housing, numSummary(Costpermonth_SEK, groups=Housing, statistics=c("mean", "sd")))
+local({
+  .Pairs <- glht(bcCostModel, linfct = mcp(Housing = "Tukey"))
+  print(summary(.Pairs)) # pairwise tests
+  print(confint(.Pairs, level=0.95)) # confidence intervals
+  print(cld(.Pairs, level=0.05)) # compact letter display
+  old.oma <- par(oma=c(0, 5, 0, 0))
+  plot(confint(.Pairs))
+  par(old.oma)
+})
+
+
+
+local({
+  .Pairs <- glht(costModel, linfct = mcp(Housing = "Tukey"))
+  print(summary(.Pairs)) # pairwise tests
+  print(confint(.Pairs, level=0.95)) # confidence intervals
+  print(cld(.Pairs, level=0.05)) # compact letter display
+  old.oma <- par(oma=c(0, 5, 0, 0))
+  plot(confint(.Pairs))
+  par(old.oma)
+})
+
+```
+
+## Part 2:  Different stress factors effects on heart rate  
+
+I did this exercise for another course, so am skipping it here.
+
+
+## Part 3: Chlorophyll-α concentrations (μg/l) in the different basins of the Baltic Sea  
+
+```{r loadChData}
+(chlor <- readr::read_tsv('../p02_inputs/Chla.txt') %>% tibble())
+```
+
+
+```{r chlrAno}
+chlor %<>%
+    mutate(Basin = as.factor(Basin)
+           , LARGE_basin = as.factor(LARGE_basin)
+           , Chlorophyll_a = as.numeric(str_replace(Chlorophyll_a, ',', '.')))
+
+bcChlor <- boxcox(Chlorophyll_a ~ LARGE_basin, data = chlor)
+lambda <- bc$x[which.max(bcChlor$y)]
+bcChlorAov <- aov(((Chlorophyll_a ^ lambda - 1) / lambda) ~ LARGE_basin, data = chlor)
+oldpar <- par(oma=c(0,0,3,0), mfrow=c(2,2))
+plot(bcChlorAov)
+par(oldpar)
+```
+
+```{r aovPwChlor}
+summary(bcChlorAov)
+
+with(chlor, numSummary(Chlorophyll_a, groups=LARGE_basin, statistics=c("mean", "sd")))
+local({
+  .Pairs <- glht(bcChlorAov, linfct = mcp(LARGE_basin = "Tukey"))
+  print(summary(.Pairs)) # pairwise tests
+  print(confint(.Pairs, level=0.95)) # confidence intervals
+  print(cld(.Pairs, level=0.05)) # compact letter display
+  old.oma <- par(oma=c(0, 5, 0, 0))
+  plot(confint(.Pairs))
+  par(old.oma)
+})
+```
+
+Using Kruskal-Wallis as an alternative.  
+```{r kw}
+# install.packages('pgirmess')
+library(pgirmess)
+library(PMCMRplus)
+
+attach(chlor)
+pgirmess::kruskalmc(Chlorophyll_a, LARGE_basin, probs = 0.05, cont=NULL)#resp=your response variable, cat= is your categorical varible
+kruskal_posthoc <- PMCMRplus::kwAllPairsNemenyiTest(x = Chlorophyll_a, g = LARGE_basin, dist = "Tukey")
+summary(kruskal_posthoc)
+detach(chlor)
+```
+```{r boxplotChlor}
+Boxplot(Chlorophyll_a ~ LARGE_basin, data = chlor, id=list(method="y"), outline= FALSE)
+```
+
+
+# Key learnings
+
+-   Function `aov` and `lm` both take formula syntax, and both accept dependent variables expressed as complex expressions, permitting box-cox transformations. However, their output is slightly different in that a `lm` that uses an independent factor variable will by default split that variable into k-1 estimates where k is the number of factor levels, whereas `aov` retains it as a simple variable. This can be seen by the call of `summary(<model>)`  
+-   The box-cox transformation is easy to implement, but does not necessarily result in lower p-values even if the model is a better overall fit.  
+-   Can use either `pgirmess::kruskalmc` or `PMCMRpluss::kwAllPairsNemenyiTest` to do Kruskal-Wallis tests with pairwise post-hoc comparisons.  
+
+# Unresolved questions
+
+-   How to use `mcp` with alternatives other than 'Tukey'? For example, if I wanted an 'fdr' post-hoc correction?  
+-   Why does function `Boxplot` still include some labeled outliers if set `outline = FALSE`?  

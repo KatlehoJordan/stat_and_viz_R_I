@@ -1,6 +1,8 @@
 ---
-title: "Exercise 2"
-output: pdf_document
+title: "Exercise 1"
+output:
+    pdf_document:
+        toc: true
 knit: (function(inputFile, encoding) {
     rmarkdown::render(inputFile, encoding = encoding, output_dir = "p03_outputs")
   })
