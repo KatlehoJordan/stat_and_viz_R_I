@@ -1,0 +1,278 @@
+---
+title: "Assignment 2"
+date: "10/30/2021"
+knit: (function(inputFile, encoding) {
+    rmarkdown::render(inputFile, encoding = encoding, output_dir = "p03_outputs")
+  })
+output:
+  html_document:
+    toc: true
+    fig_height: 7
+    fig_width: 7
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction  
+
+The purpose of this assignment was to practice performing analysis of variance (ANOVA) on a dataset about the bacterium that causes Lyme disease: *Borrelia burgdorferi*.  
+
+# Methods  
+
+## Data import  
+
+I relied heavily upon the `tidyverse` for data processing.  
+
+I started by importing the data, then converting some variables to factor data types.  
+
+Import the data.  
+```{r dataImport}
+library(tidyverse)
+
+(borr <- readr::read_tsv('../p02_inputs/borrelia.txt') %>%
+    tibble() %>% 
+    mutate(Site = as.factor(Site)
+           , Habitat = as.factor(Habitat)
+           , Island = as.factor(Island)
+           )
+  )
+```
+
+## Hypothesis formation  
+
+The next step was to formulate hypotheses for constructing one-way and two-way ANOVAs.  
+
+### Hypothesis 1 for analysis by one-way ANOVA  
+The temperature differs by island.  
+
+### Hypothesis 2 for analysis by two-way ANOVA  
+The prevalance of borrelia differs as a function of island and habitat. Specifically, there is a significant interaction between island and habitat that impacts the prevalence of borrelia.  
+
+#### Note:  
+The raw dataset also includes pH data. A higher-level model incorporating more predictor variables could be built, but it is beyond the scope of this course. It would be interesting, for example, to see if a random-forest regression model could be developed to predict the prevalence of borrelia given habitat, island, pH, and temperature information.  
+
+## Box-cox transformation  
+
+When building linear models, I always perform a Box-Cox transformation ([Reference 1](https://www.statology.org/box-cox-transformation-in-r/)). I do this by default because in the case when the data do not need to be transformed, the value selected for $\lambda$ will be such that the data are only minimally transformed. However, in the cases when data significantly violate the presumptions needed for constructing linear models, the Box-Cox transformation is a 'shortcut' since only a single transformation needs to be performed rather than 'guessing and checking' by using various data transformations (e.g., log, sqrt, inverse, etc.) until one of the transformations is deemed satisfactory.  
+
+```{r bcTransformationTemp, fig.cap= 'Figure 1: Identifying lambda for boxcox transformation for the model to predict Temperature'} 
+library(MASS)
+bcTemp <- boxcox(Temp ~ Island, data = borr)
+bcTempLambda <- bcTemp$x[which.max(bcTemp$y)]
+
+borr %<>%
+  mutate(bcTemp = (Temp ^ bcTempLambda - 1) / bcTempLambda)
+```
+In this dataset, a Box-Cox transformation could not be done directly because all values in the response variable must be greater than 0, and there were cases where borrelia prevalence was 0. Thus, prior to doing a Box-Cox transformation, a very small but non-zero number, 0.0001, was added to all values of borrelia prevalence.  
+
+```{r bcTransformationBorr, fig.cap= 'Figure 2: Identifying lambda for boxcox transformation for the model to predict Borrelia prevalence'} 
+borr %<>%
+  mutate(borrAdj = Borrelia_prevalence + 0.0001)
+
+bcBorr <- boxcox(borrAdj ~ (Habitat + Island + Habitat * Island), data = borr)
+
+bcBorrLambda <- bcBorr$x[which.max(bcBorr$y)]
+
+borr %<>%
+  mutate(bcBorr = (borrAdj ^ bcBorrLambda - 1) / bcBorrLambda)
+```
+
+
+## Building the ANOVA models  
+```{r buildModels}
+tempModel <- lm(bcTemp ~ Island, data = borr)
+borrModel <- lm(bcBorr ~ (Habitat + Island + Habitat * Island), data = borr)
+```
+
+## Evaluating model diagnostics  
+```{r diagplotsOneWay, fig.cap='Figure 3: Diagnostic plots for the one-way ANOVA model'}
+oldpar <- par(oma=c(0,0,3,0), mfrow=c(2, 2))
+plot(tempModel)
+par(oldpar)
+```
+
+
+```{r diagplotsTwoWay, fig.cap='Figure 4: Diagnostic plots for the two-way ANOVA model'}
+oldpar <- par(oma=c(0,0,3,0), mfrow=c(2, 2))
+plot(borrModel)
+par(oldpar)
+```
+
+The one-way ANOVA model to predict temperature had residuals that apparently were not normally distributed, as indicated by the Q-Q plot in Figure 3. The two-way ANOVA model to predict *Borrelia* prevalence seemed to be appropriate based on the diagnostic plots. To explore further, I performed Shapiro-Wilk tests on the residuals.  
+
+```{r normTestingResiduals}
+borr %<>%
+  mutate(predTemp = predict(tempModel)
+         , predBorr = predict(borrModel)
+         , resTemp = bcTemp - predTemp
+         , resBorr = bcBorr - predBorr
+         )
+
+shapiro.test(borr$resTemp)
+shapiro.test(borr$resBorr)
+```
+
+The residuals from the one-way ANOVA model to predict temperature are not normally-distributed, and thus a non-parametric alternative should be used instead of a one-way ANOVA. The residuals from the two-way ANOVA modelto predict *Borrelia* prevalence are approximately normally distributed, so I was able to interpret the results of that model directly.  
+
+## Building non-parametric Kruskal-Wallis model  
+
+Since I was unable to transform the temperature data in a way that would make it appropriate for use in the one-way ANOVA model based on island, I built a Kruskal-Wallis model based on the untransformed temperature data.  
+```{r kwTemp}
+library(pgirmess)
+kwTemp <- kruskalmc(borr$Temp, borr$Island, probs = 0.05, cont = NULL)
+```
+
+
+# Results  
+
+## Hypothesis 1  
+
+There were no statistically significant differences in temperature by island, as indicated by the Kruskal-Wallis test with post-hoc tests.  
+
+```{r tempKwRes}
+kwTemp
+```
+```{r tempPlotRes, fig.cap='Figure 5: Temperature by island. The islands had similar temperatures.'}
+borr %>% 
+  ggplot(aes(Island, Temp, color = Temp)) +
+  geom_jitter(width = .25, height = 0.25) +
+  scale_color_gradient(low = 'blue', high = 'red') +
+  theme(legend.position = 'none')
+```
+
+## Hypothesis 2  
+
+When it comes to the two-way ANOVA model to predict *Borrelia*  prevalence, there was a statistically significant interaction between island and habitat.  
+
+```{r borrAnovaRes}
+Anova(borrModel)
+```
+
+Although there was also a statistically significant main effect of island as well, since the interaction term was statistically signficant, predictions of the prevalence of *Borrelia* are better made by incorporating data about **both** the island and habitat.  
+
+```{r pwComparisons}
+borr %<>%
+  mutate(interaction = paste0(Island, ' - ', Habitat))
+
+pairwiseResults <- with(borr, pairwise.t.test(bcBorr, interaction, p.adjust.method = "BY"))$p.value
+
+sigPairwiseResults <-
+  pairwiseResults %>%
+    as_tibble() %>% 
+    mutate(comparator = rownames(pairwiseResults)) %>% 
+    relocate(comparator) %>% 
+    pivot_longer(cols = c(-comparator), names_to = 'base', values_to = 'p-value') %>% 
+    filter(`p-value` < 0.05) %>% 
+  relocate(base)
+
+sigPairwiseResults
+```
+
+There were 19 significant post-hoc comparisons that were significant after controlling for the family-wise error rate.  I decided to plot these significant differences using the `ggpubr` package ([Reference 2](http://www.sthda.com/english/articles/24-ggpubr-publication-ready-plots/)).  
+
+```{r fig.cap='Figure 6: Borrelia prevalance by interaction of Island and Habitat. Borrelia prevalence lower on Öja than all other islands, regardless of habitat. Askö beach has higher Borrelia prevalence than Torö beach.'}
+library(ggpubr)
+
+listedComparisons <- list()
+
+for (r in 1 : nrow(sigPairwiseResults)) {
+  listedComparisons[[r]] <- c(sigPairwiseResults$base[r], sigPairwiseResults$comparator[r])
+}
+
+borr %>% 
+  ggplot(aes(interaction, Borrelia_prevalence, fill = Habitat)) +
+  geom_boxplot() +
+  geom_jitter(width = .25, height = 5, alpha = 0.1) +
+  scale_fill_manual(values = c('sandybrown', 'forestgreen', 'cornflowerblue')) +
+  theme(legend.position = 'none', axis.text.x = element_text(angle = 90), axis.text.y = element_blank()) +
+stat_compare_means(
+  method = 't.test'
+  , comparisons = listedComparisons
+  , label = 'p.signif'
+  ) +
+  ylab('Borrelia Prevalence') +
+  xlab('')
+```
+# Discussion  
+
+## Hypothesis 1  
+
+There was not evidence in this dataset to support the hypothesis that temperatures differ across the three islands. However, another hypothesis may be that temperatures differ by habitat. Before doing formal hypothesis testing, it would be worthwhile to examine the raw data.
+
+```{r tempPlotHab, fig.cap='Figure 7: Temperature by habitat. The habitats had similar temperatures.'}
+borr %>% 
+  ggplot(aes(Habitat, Temp, color = Temp)) +
+  geom_jitter(width = .25, height = 0.25) +
+  scale_color_gradient(low = 'blue', high = 'red') +
+  theme(legend.position = 'none')
+```
+
+A cursory look at those raw data do not support that hypothesis either. Another hypothesis may be that the inability to detect differences in temperature based on island or habitat is due to an interaction between island and habitat.  
+
+```{r tempPlotInteraction, fig.cap='Figure 8: Temperature by habitat * island. There may be an interaction.'}
+borr %>% 
+  ggplot(aes(Habitat, Temp, fill = Habitat)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.25, height = 0.25, alpha = 0.25) +
+  facet_wrap(~ Island) +
+  scale_fill_manual(values = c('sandybrown', 'forestgreen', 'cornflowerblue')) +
+  theme(legend.position = 'none')
+```
+
+There may be an interaction between island and habitat; for example, beach temperatures tend to be lower than forest and meadow temperatures, except for on Öja. However, it would be a bit reckless to formally test that hypothesis with these data, since the hypothesis was generated only after extensive examination of the same data; it would be circular reasoning to draw conclusions on the same data upon which hypotheses were generated. Rather, to test this hypothesis, new data should be gathered and then a two-way ANOVA model with a formula syntax `temperature ~ Island + Habitat + Island * Habitat` should be built.  
+
+## Hypothesis 2  
+
+In regards to the two-way ANOVA model to predict *Borrelia* prevalence, the island of Öja had the lowest prevalence. The only other significant difference was between the beaches of Askö and Torö, where Askö had higher prevalence of the bacterium. Here the data are presented again, although as a stripchart and without the signifiers for the significant pairwise comparisons.  
+
+```{r fig.cap='Figure 9: Borrelia prevalance by interaction of Island and Habitat. Borrelia prevalence lower on Öja than all other islands, regardless of habitat. Askö beach has higher Borrelia prevalence than Torö beach.'}
+borr %>% 
+  ggplot(aes(interaction, Borrelia_prevalence, color = Habitat)) +
+  geom_jitter(width = .25, height = 5) +
+  scale_color_manual(values = c('sandybrown', 'forestgreen', 'cornflowerblue')) +
+  theme(legend.position = 'none', axis.text.x = element_text(angle = 90)) +
+  ylab('Borrelia Prevalence') +
+  xlab('')
+```
+
+These data do not lend support for any hypothesis that different habitats, *per se*, impact *Borrelia* prevalence.  
+
+However, there may be some characteristic about the beaches on Askö and Torö that make the prevalence of the bacterium higher and lower in those respective locations. Although efforts were made to reduce the likelihood of a type-2 error in this analysis (interpretation of the omnibus two-way ANOVA before deploying post-hoc pairwise comparisons, and then using a family-wise error-rate correction method to reduce the risk of inflating the type-2 error-rate), the observed significant difference between the beaches of Askö and Torö may still be due to sampling error. To validate this finding, new data should be collected and the results should be replicated. If the results are then replicated, it would be worth characterizing the beach habitats on these two islands to a greater extent in order to understand what is driving the difference in *Borrelia* prevalence.  
+
+As noted previously, the current dataset may be used to build a more complex model to predict *Borrelia* prevalence without the need to gather more data. Specifically, a more complex model that incorporates temperature and soil pH data could be constructed.  
+
+Out of curiosity, I tried to build such a model using the tools given in this course so far, first by performing a Box-Cox transformation, then building the model, and then performing the diagnostics to see if the model violated the assumptions for using linear models.  
+
+```{r bcTransformationBorrFull, fig.cap= 'Figure 10: Identifying lambda for boxcox transformation for the full model to predict Borrelia prevalence'} 
+
+bcBorrFull <- boxcox(borrAdj ~ (Habitat + Island + PH + Temp + Habitat * Island + Habitat * PH + Habitat * Temp + Island * PH + Island * Temp + PH * Temp + Habitat * Island * PH + Habitat * Island * Temp + Island * PH * Temp + Habitat * Island * PH * Temp), data = borr)
+
+bcBorrFullLambda <- bcBorrFull$x[which.max(bcBorrFull$y)]
+
+borr %<>%
+  mutate(bcBorrFull = (borrAdj ^ bcBorrFullLambda - 1) / bcBorrFullLambda)
+```
+
+```{r diagplotsFullModel, fig.cap='Figure 11: Diagnostic plots for the multiple linear regression model'}
+borrFullModel <- lm(borrAdj ~ (Habitat + Island + PH + Temp + Habitat * Island + Habitat * PH + Habitat * Temp + Island * PH + Island * Temp + PH * Temp + Habitat * Island * PH + Habitat * Island * Temp + Island * PH * Temp + Habitat * Island * PH * Temp), data = borr)
+
+oldpar <- par(oma=c(0,0,3,0), mfrow=c(2, 2))
+plot(borrFullModel)
+par(oldpar)
+
+borr %<>%
+  mutate(predBorrFull = predict(borrFullModel)
+         , resBorrFull = bcBorrFull - predBorrFull
+         )
+shapiro.test(borr$resBorrFull)
+```
+
+The Q-Q plot in Figure 11 as well as the results from the Shapiro-Wilk test indicate that the multiple linear regression model built violates the assumption of normally-distributed residuals. Thus, I did not interpret if the model had significant results. Rather, it would seem that alternative methods should be deployed in order to incorporate all of these predictor variables (island, habitat, soil pH, and temperature) into a more-powerful model. I suspect that machine-learning methods such as random-forest regression and neural networks would be suitable in this case.  
+
+
+
+# References  
+1.  [Statology.org: Box-Cox Transformation in R](https://www.statology.org/box-cox-transformation-in-r/)  
+2.  [STHDA: ggpubr: Publication Ready Plots](http://www.sthda.com/english/articles/24-ggpubr-publication-ready-plots/)
