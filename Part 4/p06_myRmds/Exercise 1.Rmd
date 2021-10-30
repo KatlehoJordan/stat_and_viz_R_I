@@ -106,7 +106,7 @@ chlor %<>%
            , Chlorophyll_a = as.numeric(str_replace(Chlorophyll_a, ',', '.')))
 
 bcChlor <- boxcox(Chlorophyll_a ~ LARGE_basin, data = chlor)
-lambda <- bc$x[which.max(bcChlor$y)]
+lambda <- bcChlor$x[which.max(bcChlor$y)]
 bcChlorAov <- aov(((Chlorophyll_a ^ lambda - 1) / lambda) ~ LARGE_basin, data = chlor)
 oldpar <- par(oma=c(0,0,3,0), mfrow=c(2,2))
 plot(bcChlorAov)

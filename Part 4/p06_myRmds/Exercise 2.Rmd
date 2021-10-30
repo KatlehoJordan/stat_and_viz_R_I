@@ -1,0 +1,219 @@
+---
+title: "Exercise 2"
+knit: (function(inputFile, encoding) {
+    rmarkdown::render(inputFile, encoding = encoding, output_dir = "p03_outputs")
+  })
+output:
+  html_document:
+    toc: true
+---
+
+# Exercise introduction
+
+This is Exercise 2 in Part 4 of the course.
+
+The purpose of the exercise is to cover Two-Way ANOVAs  
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Part 1: Differences in butterfat content between different cow breeds and age groups.  
+
+### Step 1: Import data   
+
+```{r importButterfat}
+# install.packages('faraway')
+library('faraway')
+data('butterfat')
+butterfat %<>% tibble()     
+butterfat
+```
+
+
+### Step 2: lm with interaction  
+
+```{r lmButterfat}
+library(car)
+butterfat %<>%
+    mutate(Breed = as.factor(Breed)
+           , Age = as.factor(Age))
+
+lmButterfat  <- lm(data = butterfat, Butterfat ~ Breed * Age)
+summary(lmButterfat)
+
+aovButterfat  <- aov(data = butterfat, Butterfat ~ Breed * Age)
+summary(aovButterfat)
+
+Anova(lmButterfat)
+```
+Get means.  
+```{r butterfatMeans}
+attach(butterfat)
+tapply(Butterfat, list(Age, Breed), mean, na.rm=TRUE)
+detach(butterfat)
+```
+
+```{r bcTransformations}
+library(MASS)
+bcBf <- boxcox(Butterfat ~ (Age * Breed), data = butterfat)
+lambda <- bcBf$x[which.max(bcBf$y)]
+cat('Lambda is:', lambda)
+bcBfLm <- lm(((Butterfat ^ lambda - 1) / lambda) ~ (Age + Breed + Age * Breed), data = butterfat)
+oldpar <- par(oma=c(0,0,3,0), mfrow=c(2,2))
+plot(bcBfLm)
+par(oldpar)
+```
+
+```{r aovBcButterfat}
+summary(bcBfLm)
+Anova(bcBfLm)
+```
+
+
+```{r posthocTests}
+bcBf <- boxcox(Butterfat ~ (Age + Breed + Age * Breed), data = butterfat)
+lambda <- bcBf$x[which.max(bcBf$y)]
+cat('Lambda is:', lambda)
+bcBfLm <- lm(((Butterfat ^ lambda - 1) / lambda) ~ (Age + Breed + Age * Breed), data = butterfat)
+oldpar <- par(oma=c(0,0,3,0), mfrow=c(2,2))
+plot(bcBfLm)
+par(oldpar)
+
+Anova(bcBfLm)
+
+library(multcomp)
+summary(glht(bcBfLm, linfct = mcp(Breed = "Tukey")))
+
+
+# Simplified model
+bcBfSimple <- boxcox(Butterfat ~ (Age + Breed), data = butterfat)
+lambda <- bcBfSimple$x[which.max(bcBfSimple$y)]
+cat('Lambda is:', lambda)
+bcBfLmSimple <- lm(((Butterfat ^ lambda - 1) / lambda) ~ (Age + Breed), data = butterfat)
+oldpar <- par(oma=c(0,0,3,0), mfrow=c(2,2))
+plot(bcBfLmSimple)
+par(oldpar)
+
+Anova(bcBfLmSimple)
+
+library(multcomp)
+summary(glht(bcBfLmSimple, linfct = mcp(Breed = "Tukey")))
+
+
+```
+
+Plotting means.  
+```{r plotMeans}
+library(ggplot2)
+# install.packages('Rmisc')
+library(Rmisc)
+sum_butterfat <- summarySE(butterfat, measurevar="Butterfat", groupvars="Breed")#summarySE
+ggplot(sum_butterfat, aes(x=Breed, y=Butterfat, color=Breed)) + 
+  geom_errorbar(aes(ymin=Butterfat-se, ymax=Butterfat+se), width=.1) + 
+  geom_line() + 
+  geom_point() 
+```
+
+Using gplots
+
+```{r gplots}
+library(gplots)
+attach(butterfat)
+plotmeans(Butterfat ~ Breed, connect=list(1:5),
+            ccol="black", pch=16, cex.axis=0.95)
+detach(butterfat)
+```
+```{r Rmcdrmisc}
+library(RcmdrMisc)
+attach(butterfat)
+plotMeans(Butterfat, Breed, error.bars="se", connect=TRUE, main="Title", ylab="Mean of butterfat %")
+detach(butterfat)
+```
+
+## Part 2. Differences in salary, level of education (degree) and gender
+
+```{r importGender}
+GENDER <- read.table("../p02_inputs/GENDER_EDU.txt", 
+  header=TRUE, sep="\t", na.strings="NA", dec=",", strip.white=TRUE) %>% tibble() %>% 
+  mutate(Degree = as.factor(Degree)
+         , GENDER = as.factor(GENDER))
+GENDER
+```
+
+Model salary by education and gender.  
+```{r salaryModel}
+bcSalary <- boxcox(Income ~ (Degree + GENDER + Degree * GENDER), data = GENDER)
+lambda <- bcSalary$x[which.max(bcSalary$y)]
+cat('Lambda is:', lambda)
+bcSalaryLm <- lm(((Income ^ lambda - 1) / lambda) ~ (Degree + GENDER + Degree * GENDER), data = GENDER)
+oldpar <- par(oma=c(0,0,3,0), mfrow=c(2,2))
+plot(bcSalaryLm)
+par(oldpar)
+
+Anova(bcSalaryLm)
+anova(bcSalaryLm)
+summary(glht(bcSalaryLm, linfct = mcp(Degree = "Tukey", GENDER = 'Tukey')))
+```
+
+
+```{r diffAnovas}
+cat('Anova type 2:\n\n')
+Anova(bcSalaryLm, type = 2)
+cat('\n\nAnova type 3:\n\n')
+Anova(bcSalaryLm, type = 3)
+cat('\n\nanova\n\n')
+anova(bcSalaryLm)
+```
+
+
+Post-hocs
+```{r phiaPackage}
+# install.packages('phia')
+library(phia)
+testInteractions(bcSalaryLm, pairwise="Degree", adjustment="holm")
+testInteractions(bcSalaryLm, pairwise="GENDER", adjustment="holm")
+```
+
+Plotting effects.  
+```{r plotIncomes}
+library(effects)
+# plot(
+#   effect(
+#     term="Degree:GENDER"
+#     ,mod=bcSalaryLm
+#     ,se=TRUE
+#     , x.var= "Degree")
+#   , ylab="Income per year 1000US dollars"
+#   , xlab= "Higest education degree"
+#   , main="Effect plot of income, eduation and gender"
+#   , colors = c(3,4)
+#   )
+```
+I would actually prefer grouped box plots... Also, reordering the factor for education would be helpful since these are currently sorted alphabetically.
+
+
+# Key learnings
+
+-   `summary(aovModel)` is much more intuitive to me than is `summary(lmModel)`.  
+        -   One can wrap a linear model in the function `Anova` in order to produce the same results as `summary(aovModel)` presuming that `aovModel` was built using `aov(<formula>)`  
+-   Function `glht` from library `multcomp` is for "general linear hypotheses' and multiple comparisons
+-   If try to use `multcomp::glht` on a model with main effects and interaction term, may get warning about covariate interactions and that default contrast might be inappropriate. Not sure what this means, but the warning goes away if one removes the interaction term when building the model.  
+-   If one removes the interaction term from a model and then does multiple comparisons, one has more power to find pairwise differences than if one includes the interaction term.  
+-   Package `phia` can be used for pairwise differences posthoc.  
+-   At least according to this dataset, no income boost for getting a PhD beyond a master's  :(
+-   The box-cox transformation may make it easier to find effects downstream, as the p-values I observed seem to be lower than those shown in the course material (where they did no such transformation). Furthermore, if data do not need to be transformed, then a lambda should be chosen by the `boxcox` function that indicates this, so it may be best to always run that transformation as a matter of course.  
+
+# Unresolved questions
+
+-   When interpretting the residuals vs fitted plot, instructed that if any group has variation 3x or more than other groups, then the linear model is not appropriate... What is the rationale for 3x? Does it matter how many factors you have? How many samples you have? This seems totally arbitrary to me, and again I'd rather have method to formally test the assumptions, such as Shapiro-Wilk etc., even though there are problems with those methods...  
+-   How to modify calls from `glht` for different post-hoc adjustments other than 'Tukey'?  
+-   What is the warning from `multcomp::glht()` about covariate interactions --- default contrast might be inappropirate?  
+-   How is it not considered p-hacking if one builds a model with an interaction term, sees no interaction effect, then removes the interaction term to give oneself more power in terms of the main effects (and subsequent pairwise comparisons)?
+        -   More importantly, how valuable are p-values anyway, if one doesn't use more of a machine-learning approach to evaluate a model's performance on never-before-seen data? 
+-   Is there a way to use `summary(glht())` to get the pairwise comparisons for the interaction terms? Maybe this question fundamentally does not make sense...  
+-   When should one use `stats::anova(<linearmodel>)` vs `car::Anova(<linearmodel>)`? Do they use different sum of squares by default? Why do their p-values slightly differ?  
+-   Rationale for using 'Holm' correction instead of Tukey or another choice when using package `phia`?  
+-   When to use type 2 or type 3 ANOVA? If used type 3 sum of squares with `Anova` function, the effect of GENDER become non-statistically significant...  
+-   How should one tune the linear model so that it knows the education factor is actually ordered, not just categorical? Shouldn't that impact the model some how to give one more power?  
+-   Why can't I knit `plot(effect(...))` when using a box-cox transformed model? It needs to find lambda, which is not in the scope probably... Again an argument for not plotting that way but rather by using ggplot on the transformed data.  
