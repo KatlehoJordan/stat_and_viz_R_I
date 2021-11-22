@@ -1,0 +1,209 @@
+---
+title: "Assignment 3"
+date: "2021-11-22"
+knit: (function(inputFile, encoding) {
+    rmarkdown::render(inputFile, encoding = encoding, output_dir = "p03_outputs")
+  })
+output: 
+  html_document: 
+    fig_height: 7
+    fig_width: 7
+    toc: TRUE
+---
+
+```{r setup, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+```
+
+<br>
+
+## Introduction
+
+The aim of this assignment was to use Chi-square (χ2) tests to analyze count data. In part 1 I used a dataset provided by the course. In Part 2 I analyzed a different dataset of my own choosing, specifically a dataset about religiosity and beliefs that abortion should be banned.
+
+## Methods
+
+For both parts of the assignment, the workflow was as follows:
+
+1.  Import data into R.
+
+2.  Restructure the data according to needs for answering the questions.
+
+3.  Visualize the count data in a meaningful way.
+
+4.  Perform the Chi-square test and report the results.s
+
+## Results
+
+### Part 1: Are there any significant associations between the personality of students and preferred animal?  
+
+Data import and setup. <br>
+
+```{r personalityDataSetup}
+library('tidyverse')
+
+personality <- readr::read_tsv('../p02_inputs/Personality_animal.txt')
+
+personalityConting <- personality %>% 
+    group_by(Personality, Animal) %>% 
+    summarize(n = n()) %>% 
+    ungroup() %>% 
+    pivot_wider(names_from = Animal, values_from = n)
+
+rnames <- personalityConting$Personality
+
+personalityConting %<>%
+    select(-Personality) %>% 
+    as.data.frame()
+
+rownames(personalityConting) <- rnames
+
+rm(rnames)
+
+personalityConting
+```
+<br>
+Data visualization (inspired by [Reference 1](http://www.sthda.com/english/wiki/chi-square-test-of-independence-in-r))
+<br>
+
+```{r personalityDataViz, fig.cap='Figure 1: Preferred Animal by Personality'}
+library("graphics")
+
+personalityConting %>% 
+    as.matrix() %>%
+    as.table() %>% 
+    mosaicplot(main = 'Preferred Animal by Personality', shade = TRUE)
+```
+
+<br> 
+Chi-square test
+<br>
+
+```{r personalityChisq}
+personRes <- chisq.test(personalityConting)
+
+personTbl <-
+    data.frame(
+        `chi` = personRes$statistic,
+        df = personRes$parameter,
+        `p` = personRes$p.value,
+        Method = personRes$method
+        ) %>% 
+    rename(`Chi-squared` = chi)
+
+library('gt')
+personTbl %>% 
+    gt() %>% 
+tab_header(
+    title = 'Table 1'
+    , subtitle = 'Preferred Animal by Personality Type Chi-Square Results'
+    ) %>%
+  fmt_number(columns = c(`Chi-squared`)) %>% 
+  fmt_scientific(columns = c(p))
+```
+
+<br>
+
+There was a significant difference in animal preference by personality type. The data visualization in Figure 1 indicates that extroverts are more likely to prefer tigers than are introverts.
+
+### Part 2: Was there an association between religiosity and a belief that abortion should be banned in Canada in 2011?  
+
+The `car` package provides the `CES11` data (Reference 2 and Reference 3).
+
+<br>
+```{r ces11Description}
+library('car')
+```
+
+```
+Description
+Data are drawn from the 2011 Canadian National Election Study, including a question on banning abortion and variables related to the sampling design.
+```
+
+I used these data to see if there was a relationship between religiosity and a belief that abortion should be banned in Canada in 2011.    
+
+<br>
+
+```{r abConting}
+abConting <-
+    CES11 %>%
+    select(abortion, importance) %>%
+    group_by(abortion, importance) %>% 
+    summarize(n = n()) %>% 
+    ungroup() %>% 
+    rename(`Abortion should be banned` = abortion) %>% 
+    pivot_wider(names_from = `Abortion should be banned`, values_from = n)
+
+rnames <- abConting$importance
+
+abConting %<>%
+    select(-importance) %>% 
+    as.data.frame()
+
+rownames(abConting) <- rnames
+
+rm(rnames)
+
+abConting
+```
+<br>
+Data visualization (inspired by [Reference 1](http://www.sthda.com/english/wiki/chi-square-test-of-independence-in-r))
+<br>
+
+```{r abDataViz, fig.cap='Figure 2: Religiosity (not religious to very religious) and a Belief that Abortion Should be Banned'}
+library("graphics")
+
+abConting %>% 
+    as.matrix() %>%
+    as.table() %>% 
+    mosaicplot(main = 'Belief that abortion should be banned by religiosity', shade = TRUE)
+```
+
+<br> 
+Chi-square test
+<br>
+
+```{r abChisq}
+abRes <- chisq.test(abConting)
+
+abTbl <-
+    data.frame(
+        `chi` = abRes$statistic,
+        df = abRes$parameter,
+        `p` = abRes$p.value,
+        Method = abRes$method
+        ) %>% 
+    rename(`Chi-squared` = chi)
+
+abTbl %>% 
+    gt() %>% 
+tab_header(
+    title = 'Table 2'
+    , subtitle = 'Belief that Abortion Should be Banned by Religiosity Chi-Square Results'
+    ) %>%
+  fmt_number(columns = c(`Chi-squared`)) %>% 
+  fmt_scientific(columns = c(p))
+```
+<br>
+
+There was a significant difference in the belief that abortion should be banned based on religiosity. The data visualization in Figure 2 indicates that if one is more religious, one is also more likely to believe that abortion should be banned.  
+
+<br>
+
+## Discussion
+
+### Part 1
+
+Assertiveness or aggressiveness may be a personality trait that explains the association between extroversion and a preference for tigers, large predators. The same underlying personality trait may explain the association between introversion and a preference for rabbits, small prey animals.  
+
+### Part 2
+
+The association between religiosity and a belief that abortion should be banned is not especially surprising. It would be interesting, however, to gather data that explores if beliefs about abortion change as a result of becoming religious or "losing" one's religion (i.e., becoming agnostic or atheist after having been previously religious.)  
+
+<br>
+
+## References
+
+1.  [STHDA: Statistical tools for high-throughput data analysis. Chi-Square Test of Independence in R](http://www.sthda.com/english/wiki/chi-square-test-of-independence-in-r)
+2.  Fournier, P., Cutler, F., Soroka, S., and Stolle, D. (2013). Canadian Election Study 2011: Study documentation. Technical report, Canadian Opinion Research Archive, Queen's University, Kingson,Ontario.
+3.  Northrup, D. (2012). The 2011 Canadian Election Survey: Technical documention. Technical report, Institute for Social Research, York University, Toronto, Ontario.
