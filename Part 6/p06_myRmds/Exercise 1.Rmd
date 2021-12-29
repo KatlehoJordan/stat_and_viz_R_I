@@ -1,0 +1,160 @@
+---
+title: "Exercise 1"
+date: "2021-12-28"
+knit: (function(inputFile, encoding) {
+    rmarkdown::render(inputFile, encoding = encoding, output_dir = "p03_outputs")
+  })
+output: 
+  html_document: 
+    fig_height: 10
+    fig_width: 7
+    toc: TRUE
+---
+
+```{r setup, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+```
+
+<br>
+
+# Introduction to Bayesian t-test
+
+The purpose of this exercise is to become familiar with using a Bayesian method to approximate the results of a Student's t-test.
+
+# Birthweight data analysis based on smoking status
+
+## Data import
+
+```{r dataImportSmokers}
+bwBySmoke <- data.frame(
+    `Birth weight` = c(
+        3.18, 2.74, 2.9, 3.27, 3.65, 3.42, 3.23, 2.86, 3.6, 3.65, 3.69, 3.53, 2.38, 2.34, 3.99, 3.89, 3.6, 3.73, 3.31, 3.7, 4.08, 3.61, 3.83, 3.41, 4.13, 3.36, 3.54, 3.51, 2.71
+        )
+    , `Smoking habit` = c(
+        'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Heavy smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers', 'Non-smokers'
+        )
+    )
+```
+
+## Format structure
+
+```{r formatData}
+library('tidyverse')
+
+set.seed(03892)
+bwBySmokeWide <- 
+  cbind(
+    bwBySmoke %>% 
+      filter(Smoking.habit == 'Heavy smokers') %>% 
+      select(Birth.weight) %>% 
+      rename('Heavy smokers' = Birth.weight),
+    bwBySmoke %>% 
+      filter(Smoking.habit == 'Non-smokers') %>% 
+      select(Birth.weight) %>% 
+      rename('Non-smokers' = Birth.weight) %>% 
+      slice_sample(n = nrow(.) - 1)
+)
+
+bwBySmokeWide
+```
+
+## Running the frequentist t-test
+
+```{r frequentistTtest}
+freqTtestRes <- t.test(bwBySmokeWide$`Heavy smokers`, bwBySmokeWide$`Non-smokers`)
+
+freqTtestRes
+```
+
+## Running the Bayesian t-test
+
+Notice you may get error and need to install JAGS (or rjags) from [here](https://sourceforge.net/projects/mcmc-jags/files/JAGS/4.x/).
+
+```{r bayesianTtest}
+# install.packages('BEST')
+library('BEST')
+
+bayesTtestRes <- BESTmcmc(bwBySmokeWide$`Heavy smokers`, bwBySmokeWide$`Non-smokers`)
+
+bayesTtestRes
+```
+
+Viewing more output from Bayesian t-test results
+
+```{r more BtTestResults}
+summary(bayesTtestRes)
+```
+
+## Plotting Bayesian t-test results
+
+Basic plot
+
+```{r basicPlot}
+plot(bayesTtestRes, compVal = 0, ROPE = c(0.1, 0.1))
+```
+
+Posterior probability distributions for each population.
+
+```{r postPred}
+plotPostPred(bayesTtestRes)
+```
+
+Plot all results from the Bayesian t-test.
+
+```{r plotAll, fig.height=10}
+plotAll(bayesTtestRes)
+```
+
+# Bayesian t-test on a different dataset
+
+Use `Arrests` dataset to see if difference in age between those released with summons or not after being caught with a small amount of marijuana in Toronto from 1997 to 2002.
+
+```{r importOtherData}
+arrests <-
+  Arrests %>% 
+  select(released, age)
+
+arrests
+
+arrestsWide <-
+  cbind(
+    arrests %>% 
+      filter(released == 'Yes') %>% 
+      select(age) %>% 
+      rename('Released' = age) %>% 
+      slice_sample(n = 892),
+    arrests %>% 
+      filter(released == 'No') %>% 
+      select(age) %>% 
+      rename('Not released' = age)
+  )
+
+arrestBayesTtestRes <- BESTmcmc(arrestsWide$Released, arrestsWide$`Not released`)
+
+summary(arrestBayesTtestRes)
+```
+
+Plots for the arrest data.
+
+```{r allPlotsArrests, fig.height=10}
+plot(arrestBayesTtestRes, compVal = 0, ROPE = c(0.1, 0.1))
+plotAll(arrestBayesTtestRes)
+```
+
+Comparing to frequentist t-test.
+
+```{r freqTtestArrests}
+freqArrestsTtestRes <- t.test(arrestsWide$Released, arrestsWide$`Not released`)
+
+freqArrestsTtestRes
+```
+
+# Reflections
+
+-   Many of the outputs from the Bayesian analysis are not adequately explained in the course material.\
+-   The Bayesian method is slow.\
+-   The Bayesian method requires equal sample sizes, apparently, as indicated by the first step that required dropping an extra sample.\
+-   It is unclear if there are ways to do paired / unpaired alternatives with the Bayesian method, or how to extend the Bayesian method to other more-complex models beyond a simple comparison of means in a t-test.\
+-   The whole point of Bayesian methods is to start with a prior and update it, but the course material does not specify how to specify the baseline prior.
+-   The `BEST` package seems to run many simulations, perhaps by taking different subsets of the provided data? The course material did not specify how to set parameters for these simulations, such as iterations, sample size, etc.
+-   Using the `BEST` package with knitting a markdown file is odd, as it seems to restart the R session several times as evidenced by the log in the console when knitting these files.

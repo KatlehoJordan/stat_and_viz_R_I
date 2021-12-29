@@ -1,0 +1,609 @@
+---
+title: "Final Project"
+author: ""
+date: "2021-12-29"
+knit: (function(inputFile, encoding) {
+    rmarkdown::render(inputFile, encoding = encoding, output_dir = "p03_outputs")
+  })
+output:
+    html_document:
+        toc: true
+---
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+library(RcmdrMisc)
+library(multcomp)
+```
+
+## Introduction
+
+In this exercise, I was tasked with performing a trend analysis, an analysis for differences between groups, an analysis for differences between multiple groups, and an analysis using count data.  
+
+## Method
+
+The data I selected for this exercise is the `Leinhardt` dataset from the `car` package in `R`. The information provided by the command `?Leinhardt` includes the following description:  
+
+```{r leinhardt, eval=FALSE}
+Data on Infant-Mortality
+Description
+The Leinhardt data frame has 105 rows and 4 columns. The observations are nations of the world around 1970.
+
+Usage
+Leinhardt
+Format
+This data frame contains the following columns:
+
+income
+Per-capita income in U. S. dollars.
+
+infant
+Infant-mortality rate per 1000 live births.
+
+region
+A factor with levels: Africa; Americas; Asia, Asia and Oceania; Europe.
+
+oil
+Oil-exporting country. A factor with levels: no, yes.
+
+Details
+The infant-mortality rate for Jamaica is misprinted in Leinhardt and Wasserman; the correct value is given here. Some of the values given in Leinhardt and Wasserman do not appear in the original New York Times table and are of dubious validity.
+
+Source
+Leinhardt, S. and Wasserman, S. S. (1979) Exploratory data analysis: An introduction to selected methods. In Schuessler, K. (Ed.) Sociological Methodology 1979 Jossey-Bass.
+
+The New York Times, 28 September 1975, p. E-3, Table 3.
+
+References
+Fox, J. (2016) Applied Regression Analysis and Generalized Linear Models, Third Edition. Sage.
+
+Fox, J. and Weisberg, S. (2019) An R Companion to Applied Regression, Third Edition, Sage.
+
+[Package carData version 3.0-4 Index]
+```
+
+The dataset is rich enough that I was able to achieve all assignment objectives with a single dataset. Specifically, I decided to:
+1. Perform exploratory data analysis
+2. Perform a trend analysis by examining the relationship between income and infant mortality
+3. Perform an analysis for differences between groups by examining if countries that export oil have greater per-capita income
+4. Perform an analysis to see if there are differences in infant mortality based on global region
+5. Perform an analysis to see if different global regions are more likely to export oil
+
+### Loading the data
+
+```{r loadData, message=FALSE, warning=FALSE, include=FALSE}
+library(car)
+library(tidyverse)
+lData <- Leinhardt %>% as_tibble()
+```
+
+### Cleaning the data  
+
+Since some data were missing, I dropped incomplete cases. I also renamed the values in the `oil` factor so that graphs would have more meaningful labels by default.   
+
+```{r datacleaning}
+lData %<>% 
+  na.omit() %>% 
+  mutate(oil = case_when(oil == 'yes' ~ 'Oil exporter', oil == 'no' ~ 'Not oil exporter'))
+```
+
+
+### Creating the custom functions that will be used
+
+```{r defineCustomFunctions}
+# Tabulates descriptive statistics for interval/ratio data in a nice format
+descNum <- function(ds, vector, vectorInPlainEnglish, title = '', subtitle = ''
+                 , buildGtDirectly = TRUE) {
+    results <- ds %>% 
+        summarize(
+            Parameter = paste({{vectorInPlainEnglish}})
+            , n = n()
+            , Min = min({{vector}})
+            , `Mean` = mean({{vector}})
+            , SD = sd({{vector}})
+            , Median = median({{vector}})
+            , Max = max({{vector}})
+        )
+    
+    if (buildGtDirectly == F) results
+    else if (buildGtDirectly == T) {
+        results %>% 
+            gt() %>%
+            tab_header(
+                title = title , subtitle = subtitle
+            ) %>%
+            fmt_number(columns = c(n, Mean, SD, Median))
+    }
+}
+
+# Tabulates results from Shapiro-Wilk tests in a nice format
+tabSwResults <- function(testVector, vectorPlainEnglish
+                         , title = '', subtitle = ''
+                         , buildGtDirectly = TRUE
+                         , alpha = .05) {
+    localVar <- shapiro.test(testVector)
+    
+    results <-
+        data.frame(
+            Data = vectorPlainEnglish
+            , Method = localVar$method
+            , W = localVar$statistic
+            , p = localVar$p.value
+        ) %>%
+        mutate(
+            Interpretation =
+                case_when(
+                    p < alpha ~ 'Significantly different than normal distribution'
+                    , p >= alpha ~
+                        'Not significantly different than normal distribution'
+                )
+        )
+    
+    rownames(results) <- NULL
+    
+    if (buildGtDirectly == F) results
+    else if (buildGtDirectly == T) {
+        results %>% 
+            gt() %>%
+            tab_header(
+                title = title
+                , subtitle = subtitle
+            ) %>%
+            fmt_number(columns = c(W)) %>% 
+            fmt_scientific(columns = c(p))
+    }
+}
+
+# Tabulates correlation results in a nice format
+tabCorResults <- function(testVector1, testVector2
+                          , formulaInPlainEnglish
+                          , title = '', subtitle = ''
+                          , buildGtDirectly = TRUE
+                          , alternative = 'two.sided', method = 'kendall'
+                          , alpha = .05) {
+    
+    localVar <- cor.test(
+        testVector1
+        , testVector2
+        , alternative = alternative
+        , method = method)
+    
+    localStat <- names(localVar$statistic)
+    localEstimate <- names(localVar$estimate)
+    
+    results <-
+        data.frame(
+            Data = formulaInPlainEnglish
+            , Method = localVar$method
+            , Version = localVar$alternative
+            , stat = localVar$statistic
+            , df = length(testVector1) - 2
+            , estimate = localVar$estimate
+            , p = localVar$p.value
+        ) %>%
+        mutate(
+            Interpretation =
+                case_when(
+                    p < alpha ~ 'Significant correlation'
+                    , p >= alpha ~
+                        'Non-significant correlation'
+                )
+        ) %>% 
+        rename( {{localStat}} := stat
+                , {{localEstimate}} := estimate)
+    
+    rownames(results) <- NULL
+    if (buildGtDirectly == F) results
+    else if (buildGtDirectly == T) {
+        results %>% 
+            gt() %>%
+            tab_header(
+                title = title
+                , subtitle = subtitle
+            ) %>%
+            fmt_scientific(columns = c({{localStat}}, {{localEstimate}}, p))
+    }
+}
+
+# Tabulates results from a Wilcoxon test in a nice format
+# Has not been tested for paired-Wilcoxon test, so may need to be made more generalizable
+tabWilcoxResults <- function(data, formula, formulaInPlainEnglish, alternative
+                           , title = '', subtitle = ''
+                           , buildGtDirectly = TRUE
+                           , alpha = .05) {
+    
+    localVar <-
+        wilcox.test(formula, alternative = alternative, data = data)
+    
+    meds <- Tapply(formula, median, na.action = na.omit, data = data)
+    
+    group1Name <- paste0('Median for ', tools::toTitleCase(names(meds)[1])
+                         , ' group')
+    group2Name <- paste0('Median for ', tools::toTitleCase(names(meds)[2])
+                         , ' group')
+
+    results <-
+        data.frame(
+            Data = formulaInPlainEnglish
+            , Method = localVar$method
+            , Alternative = localVar$alternative
+            , W = localVar$statistic
+            , p = localVar$p.value
+        ) %>%
+        mutate(
+            Interpretation =
+                case_when(
+                    p < alpha ~ 'Medians are significantly different '
+                    , p >= alpha ~
+                        'Medians are not significantly different'
+                    )
+            , group1Med = meds[[1]]
+            , group2Med = meds[[2]]
+            ) %>% 
+        rename(`p-value` = p
+               , {{group1Name}} := group1Med
+               , {{group2Name}} := group2Med
+               )
+    
+    rownames(results) <- NULL
+    
+    if (buildGtDirectly == F) results
+    else if (buildGtDirectly == T) {
+        results %>% 
+            gt() %>%
+            tab_header(
+                title = title
+                , subtitle = subtitle
+            ) %>%
+            fmt_scientific(columns = c(W, `p-value`))
+    }
+}
+```
+
+## Results
+
+### Step 1: Exploratory Data Analysis
+
+First, get some basic descriptive statistics.  
+
+```{r eda}
+library(gt)
+rbind(
+descNum(lData %>% filter(oil == 'Not oil exporter'), income, 'Per-capita income in U.S. Dollars for countries that do not export oil', buildGtDirectly = FALSE)
+, descNum(lData %>% filter(oil == 'Oil exporter'), income, 'Per-capita income in U.S. Dollars for countries that export oil', buildGtDirectly = FALSE)
+, descNum(lData %>% filter(region == 'Africa'), infant, 'Infant mortality in Africa', buildGtDirectly = FALSE)
+, descNum(lData %>% filter(region == 'Americas'), infant, 'Infant mortality in the Americas', buildGtDirectly = FALSE)
+, descNum(lData %>% filter(region == 'Asia'), infant, 'Infant mortality in in Asia', buildGtDirectly = FALSE)
+, descNum(lData %>% filter(region == 'Europe'), infant, 'Infant mortality in Europe', buildGtDirectly = FALSE)
+) %>% 
+    gt() %>% 
+    tab_header('Table 1', 'Descriptive Statistics for the Leinhardt dataset') %>% 
+  fmt_currency(columns = c(Min, Mean, SD, Median, Max), rows = 1:2) %>% 
+  fmt_engineering(columns = c(Min, Mean, SD, Median, Max), rows = 3:6)
+```
+
+<br>
+
+Then do an exploratory plot.  
+
+```{r scatterplot, fig.cap = 'Figure 1: Scatterplot of Infant mortality ~ Income + oil export status + global region '}
+lData %>%
+  ggplot(aes(income, infant, color = oil)) +
+    geom_point() +
+  ylab('Infant-mortality rate per 1000 live births') +
+  xlab('Per-capita income in U.S. Dollars') +
+  labs(title = 'Infant mortality as it relates to income, status as an oil exporter, and global region') +
+    scale_color_manual(values = c('darkgray', 'purple')) +
+  facet_wrap(~region)
+```
+
+### Step 2: Trend analysis --- infant ~ income  
+
+First, examine the relationship directly to determine if Pearson's or Spearman's is more appropriate.
+
+```{r cor, fig.cap = 'Figure 2: Scatterplot of Infant Mortality ~ Per-Capita Income with simple line of best fit'}
+lData %>%
+  ggplot(aes(income, infant)) +
+    geom_point(shape = 21) +
+    geom_smooth(method = lm, se = F) +
+    theme(legend.position = 'none') +
+  ylab('Infant-mortality rate per 1000 live births') +
+  xlab('Per-capita income in U.S. dollars')
+```
+
+<br>
+
+There appears to be a negative relationship, but it is not strictly linear. Thus, a Spearman's correlation will be used.
+
+```{r buildAndAssessModel}
+tabCorResults(lData$infant, lData$income, 'Infant-mortality rate as it relates to Per-capita income', 'Table 2', 'Spearman Correlation Analysis', method = 'spearman')
+```
+
+
+
+<br>
+
+The relationship is significant. As income increases, infant mortality tends to decrease.  
+
+
+### Step 3: Differences between groups --- income ~ oil export status  
+
+First, test for assumptions to see if can use parametric methods.  
+
+```{r testAssumptionsTtestIncomeOil}
+
+exp <- lData %>% filter(oil == 'Oil exporter')
+nonExp <- lData %>% filter(oil == 'Not oil exporter')
+
+rbind(
+    tabSwResults(exp$income, 'Per-capita income in US Dollars in oil exporters', buildGtDirectly = FALSE)
+    , tabSwResults(nonExp$income, 'Per-capita income in US Dollars in non-oil exporters', buildGtDirectly = FALSE)
+) %>% 
+    gt() %>% 
+    tab_header('Table 3', 'Shapiro-Wilk tests for normality in Income data by Oil export status') %>% 
+    fmt_engineering(columns = c(W, p))
+```
+
+
+<br>
+
+
+Neither is normally-distributed, so unpaired t-test is not appropriate if data are not first transformed.  
+
+```{r retestAssumptionsGroupsIncome}
+lData %<>%
+    mutate(logIncome = log(income)
+           , sqrtIncome = sqrt(income)
+           , invIncome = 1 / income)
+
+
+exp <- lData %>% filter(oil == 'Oil exporter')
+nonExp <- lData %>% filter(oil == 'Not oil exporter')
+
+rbind(
+    tabSwResults(exp$sqrtIncome, 'sqrt(Per-capita income in US Dollars) in oil exporters', buildGtDirectly = FALSE)
+    , tabSwResults(nonExp$sqrtIncome, 'sqrt(Per-capita income in US Dollars) in non-oil exporters', buildGtDirectly = FALSE)
+    , tabSwResults(exp$logIncome, 'log(Per-capita income in US Dollars) in oil exporters', buildGtDirectly = FALSE)
+    , tabSwResults(nonExp$logIncome, 'log(Per-capita income in US Dollars) in non-oil exporters', buildGtDirectly = FALSE)
+    , tabSwResults(exp$invIncome, 'inv(Per-capita income in US Dollars) in oil exporters', buildGtDirectly = FALSE)
+    , tabSwResults(nonExp$invIncome, 'inv(Per-capita income in US Dollars) in non-oil exporters', buildGtDirectly = FALSE)
+) %>% 
+    gt() %>% 
+    tab_header('Table 4', 'Shapiro-Wilk tests for normality in transformed Income data by Oil export status') %>% 
+    fmt_engineering(columns = c(W, p))
+```
+
+
+<br>
+
+
+One of the groups still has data that is significantly different than a normal distribution. Thus, a Wilcoxon Rank-Sum / Mann-Whitney U test will be used instead of an unpaired-t test.  
+
+```{r wilcoxRes}
+tabWilcoxResults(data = lData, formula = income ~ oil, formulaInPlainEnglish = 'Income by oil-exporting status', alternative = 'two.sided', title = 'Table 5', 'Wilcoxon Rank-Sum Test for differences in median income due to exporting oil')
+```
+
+
+<br>
+
+The income did not significantly differ based on oil-export status
+
+```{r boxplot, fig.cap = 'Figure 3: Boxplot of Income ~ Oil export status'}
+lData %>%
+  ggplot(aes(oil, income, fill = oil)) +
+    geom_boxplot() +
+    theme(legend.position = 'none') +
+  ylab('Per-capita income in US Dollars') +
+  xlab('Oil-exporting status') +
+    scale_fill_manual(values = c('beige', 'coral1'))
+```
+
+### Step 4: Perform an analysis to see if there are differences in infant mortality based on global region --- infant mortality ~ region  
+
+
+First, test for assumptions to see if can use parametric methods.  
+
+```{r testAssumptionsTtest}
+
+africa <- lData %>% filter(region == 'Africa')
+americas <- lData %>% filter(region == 'Americas')
+asia <- lData %>% filter(region == 'Asia')
+europe <- lData %>% filter(region == 'Europe')
+
+rbind(
+    tabSwResults(africa$infant, 'Infant mortality rate in Africa', buildGtDirectly = FALSE)
+    , tabSwResults(americas$infant, 'Infant mortality rate in Americas', buildGtDirectly = FALSE)
+    , tabSwResults(asia$infant, 'Infant mortality rate in Asia', buildGtDirectly = FALSE)
+    , tabSwResults(europe$infant, 'Infant mortality rate in Europe', buildGtDirectly = FALSE)
+) %>% 
+    gt() %>% 
+    tab_header('Table 6', 'Shapiro-Wilk tests for normality in Infant mortality data by global region') %>% 
+    fmt_engineering(columns = c(W, p))
+```
+
+
+<br>
+
+
+Several are not normally-distributed, so parametric methods are not appropriate if data are not first transformed.  
+
+```{r retestAssumptionsGroups}
+lData %<>%
+    mutate(logInfant = log(infant)
+           , sqrtInfant = sqrt(infant)
+           , invInfant = 1 / infant)
+
+africa <- lData %>% filter(region == 'Africa')
+americas <- lData %>% filter(region == 'Americas')
+asia <- lData %>% filter(region == 'Asia')
+europe <- lData %>% filter(region == 'Europe')
+
+rbind(
+    tabSwResults(africa$logInfant, 'log(Infant mortality) rate in Africa', buildGtDirectly = FALSE)
+    , tabSwResults(americas$logInfant, 'log(Infant mortality) rate in Americas', buildGtDirectly = FALSE)
+    , tabSwResults(asia$logInfant, 'log(Infant mortality) rate in Asia', buildGtDirectly = FALSE)
+    , tabSwResults(europe$logInfant, 'log(Infant mortality) rate in Europe', buildGtDirectly = FALSE)
+    
+    , tabSwResults(africa$sqrtInfant, 'sqrt(Infant mortality) rate in Africa', buildGtDirectly = FALSE)
+    , tabSwResults(americas$sqrtInfant, 'sqrt(Infant mortality) rate in Americas', buildGtDirectly = FALSE)
+    , tabSwResults(asia$sqrtInfant, 'sqrt(Infant mortality) rate in Asia', buildGtDirectly = FALSE)
+    , tabSwResults(europe$sqrtInfant, 'sqrt(Infant mortality) rate in Europe', buildGtDirectly = FALSE)
+    
+    , tabSwResults(africa$invInfant, 'inv(Infant mortality) rate in Africa', buildGtDirectly = FALSE)
+    , tabSwResults(americas$invInfant, 'inv(Infant mortality) rate in Americas', buildGtDirectly = FALSE)
+    , tabSwResults(asia$invInfant, 'inv(Infant mortality) rate in Asia', buildGtDirectly = FALSE)
+    , tabSwResults(europe$invInfant, 'inv(Infant mortality) rate in Europe', buildGtDirectly = FALSE)
+    
+) %>% 
+    gt() %>% 
+    tab_header('Table 7', 'Shapiro-Wilk tests for normality in transformed Infant mortality data by global region') %>% 
+    fmt_engineering(columns = c(W, p))
+```
+
+
+<br>
+
+
+The log-transformation worked in all subgroups, so a one-way ANOVA will be performed on the log-transformed data.  
+
+
+```{r anovaModel, fig.cap='Figure 4: ANOVA model diagnostic plots'}
+infantModel <- aov(logInfant ~ region, data = lData)
+oldpar <- par(oma=c(0,0,3,0), mfrow=c(2, 2))
+plot(infantModel)
+par(oldpar)
+```
+
+
+<br>
+
+
+The diagnostic plots indicate the ANOVA model is appropriate for the log-transformed data.
+
+```{r summaryAnova}
+summary(infantModel)
+```
+
+
+<br>
+
+
+The summary indicates there is a significant difference by region. Look at post-hoc comparisons to understand the specific differences.
+
+```{r anovaPosthoc}
+TukeyHSD(infantModel, "region")
+```
+
+
+<br>
+
+Every pairwise comparison is significantly different except for the comparison of the Americas to Asia.  
+
+```{r plotANOVAresults, fig.cap='Figure 5: Logged infant mortality by global region'}
+lData %>% 
+  ggplot(aes(region, logInfant, color = logInfant)) +
+  geom_jitter(width = .25, height = 0.25) +
+  scale_color_gradient(low = 'blue', high = 'red') +
+  theme(legend.position = 'none')
+```
+
+
+<br>
+
+
+Figure 5, as well as the Tukey's post-hoc results indicates that:
+ - Africa has greater infant mortality than all other global regions
+ - Europe has lower infant mortality than all other global regions
+
+### Step 5: Perform an analysis to see if different global regions are more likely to export oi --- oil ~ region  
+
+
+```{r}
+lConting <- lData %>% 
+    group_by(region, oil) %>% 
+    summarize(n = n()) %>% 
+    ungroup() %>% 
+    pivot_wider(names_from = oil, values_from = n, values_fill = 0)
+
+
+rnames <- lConting$region
+
+lConting %<>%
+    select(-region) %>% 
+    as.data.frame()
+
+rownames(lConting) <- rnames
+
+rm(rnames)
+
+lConting
+```
+
+
+<br>
+
+Data visualization (inspired by [Reference 3](http://www.sthda.com/english/wiki/chi-square-test-of-independence-in-r)).
+
+```{r chiVis, fig.cap='Figure 6: Oil-export status by Region'}
+library("graphics")
+
+lConting %>% 
+    as.matrix() %>%
+    as.table() %>% 
+    mosaicplot(main = 'Oil-export status by Region', shade = TRUE)
+```
+
+
+<br>
+
+
+Chi-square test.
+
+```{r}
+chiRes <- chisq.test(lConting)
+
+chiResTbl <-
+    data.frame(
+        `chi` = chiRes$statistic,
+        df = chiRes$parameter,
+        `p` = chiRes$p.value,
+        Method = chiRes$method
+        ) %>% 
+    rename(`Chi-squared` = chi)
+
+library('gt')
+chiResTbl %>% 
+    gt() %>% 
+tab_header(
+    title = 'Table 8'
+    , subtitle = 'Oil-export status by Region Chi-Square Results'
+    ) %>%
+  fmt_number(columns = c(`Chi-squared`)) %>% 
+  fmt_scientific(columns = c(p))
+```
+
+
+<br>
+
+
+There was no significant association between region and oil-export status.
+
+## Discussion
+
+In the data from the `Leinhardt` data, there was a significant correlation between infant mortality and per-capita income, as detected by Spearman's $\rho$.  
+
+There was not a significant difference in income between countries based on oil-exporting status, as detected by a Wilcoxon Rank-Sum / Mann-Whitney U test. The non-parametric test was used since several transformations failed to yield datasets that were normally distributed. Other transformations could have been attempted (Boxcox transformations, for example) in order to see if it would be possible to leverage a more-powerful parametric test (such as an unpaired t-test). However, after testing three data transformations, it feels a bit akin to 'p-hacking' to keep transforming data in various ways until one can use a more-powerful test.
+
+“If you torture the data long enough, it will confess to anything”
+- Ronald Coase.
+
+A one-way ANOVA with Tukey's HSD post-hoc corrections revealed a statistically significant difference in infant mortality based on global region. The data required a log-transformation prior to being used in the model, but the model indicated that Africa has the highest infant mortality, Europe the lowest, and the Americas and Asia have infant mortality between that of Africa and Europe.  
+
+Finally, a chi-square test failed to detect an association between oil-export status and region. However, since there were no observations of oil-exporting countries in Europe, this test is likely inappropriate for the analysis when there are relatively few observations.
+
+The most interesting findings from this analysis are the association between infant mortality and income, and that infant mortality is also associated with global region. Although the analysis was not performed here, it is likely that there is a significant difference in income by global region as well. One could argue that efforts to increase per-capita income, especially in Africa, may have a positive impact by reducing infant mortality.  
+
+## References
+
+1.  Fox, J. (2016) *Applied Regression Analysis and Generalized Linear Models*, Third Edition. Sage. As indicated by the `car` package in `R`, version 3.0-4.  
+2.  Fox, J. and Weisberg, S. (2019) *An R Companion to Applied Regression*, Third Edition, Sage. As indicated by the `car` package in `R`, version 3.0-4.
+3.  [STHDA: Statistical tools for high-throughput data analysis. Chi-Square Test of Independence in R](http://www.sthda.com/english/wiki/chi-square-test-of-independence-in-r)
